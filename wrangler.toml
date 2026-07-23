@@ -1,5 +1,5 @@
 # wrangler.toml
-name = "riddle-backend"
+name = "riddle-notebook"
 main = "worker.js"
 compatibility_date = "2024-03-20"
 account_id = "01e18ae4963b3414b15090fde91ef017"
