@@ -650,7 +650,7 @@ function mainCommit(){
   mainShowStatus('墨水正在下沉...');
 
   const cfg = getSafeStorage('riddle-cfg', {});
-  const workerUrl = cfg.workerUrl || '/api/chat';
+  const workerUrl = cfg.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat';
   const sid = localStorage.getItem('riddle_session');
 
   // 15 秒連線超時中斷控制器
