@@ -18,4 +18,3 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 -- 建立索引加速查詢
 CREATE INDEX IF NOT EXISTS idx_conversations_session ON conversations(session_id);
-
