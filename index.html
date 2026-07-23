@@ -1,1 +1,512 @@
-<h1>Hello Riddle</h1>
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>魔法日記</title>
+<link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Liu+Jian+Mao+Cao&family=Long+Cang&display=swap" rel="stylesheet">
+<style>
+/* 基礎設定與紙張視覺 */
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { 
+  background-color: #d8cdb8; 
+  background-image: 
+    radial-gradient(circle at center, transparent 30%, rgba(60, 40, 20, 0.5) 150%),
+    url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.07'/%3E%3C/svg%3E");
+  font-family: 'Georgia', serif; 
+  overflow: hidden; 
+  height: 100dvh; 
+  width: 100vw; 
+  touch-action: none;
+}
+
+/* 遮罩層與毛玻璃 */
+.overlay { 
+  position: fixed; inset: 0; background: rgba(20, 15, 10, 0.5); 
+  display: flex; align-items: center; justify-content: center; 
+  z-index: 100; padding: 20px; 
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  opacity: 1; transition: opacity 0.3s ease;
+}
+.overlay.hidden { opacity: 0; pointer-events: none; }
+
+/* 質感設定卡片 */
+.card { 
+  background: rgba(250, 245, 235, 0.95); 
+  border: 1px solid rgba(139, 115, 85, 0.3);
+  border-radius: 20px; padding: 32px 24px; 
+  max-width: 350px; width: 100%; 
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.4);
+  transform: translateY(0); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.overlay.hidden .card { transform: translateY(40px); }
+.card h2 { font-size: 24px; margin-bottom: 6px; text-align: center; color: #3d2a1b; letter-spacing: 1.5px; text-shadow: 0 1px 1px rgba(255,255,255,0.8); }
+.card .sub { text-align: center; font-size: 13px; color: #8b7355; margin-bottom: 24px; }
+.card label { display: block; font-size: 13px; color: #5c4b3a; margin: 16px 0 6px; font-weight: bold; }
+.card input, .card select { 
+  width: 100%; padding: 12px 16px; 
+  border: 1.5px solid #d4c5b0; border-radius: 10px; 
+  font-size: 15px; background: #fffcf5; color:#333;
+  outline: none; transition: all .2s; font-family: inherit;
+}
+.card input:focus, .card select:focus { border-color: #8b7355; background: #fff; box-shadow: 0 0 0 3px rgba(139,115,85,0.15); }
+.card .hint { font-size: 11px; color: #9a8a75; margin-top: 6px; line-height: 1.4; }
+.card .row { display: flex; gap: 12px; margin-top: 28px; }
+.card .row button { 
+  flex: 1; padding: 14px; border-radius: 10px; 
+  font-size: 15px; font-weight: bold; border: none; cursor: pointer; transition: all 0.2s; 
+}
+.card .row .secondary { background: #e3d8c8; color: #5c4b3a; }
+.card .row .secondary:hover { background: #d6cbb9; }
+.card .row .primary { background: linear-gradient(135deg, #6d5036, #4a3424); color: #fff; letter-spacing: 1px; box-shadow: 0 4px 15px rgba(74, 52, 36, 0.4); }
+.card .row .primary:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(74, 52, 36, 0.5); }
+.card .row button:active { transform: scale(0.96); }
+
+/* 日記本與燭光動畫 */
+#diary { position: relative; width: 100%; height: 100dvh; }
+#diary::before { 
+  content: ''; position: absolute; inset: 0; 
+  background: radial-gradient(circle at 50% 30%, rgba(220, 140, 50, 0.08) 0%, transparent 60%); 
+  pointer-events: none; z-index: 0; 
+  animation: flicker 4s infinite alternate ease-in-out; 
+}
+#diary::after { 
+  content: ''; position: absolute; top: 0; bottom: 0; left: 52px; width: 1.5px; 
+  background: rgba(180, 80, 80, 0.2); pointer-events: none; z-index: 0; 
+}
+@keyframes flicker {
+  0% { opacity: 0.6; transform: scale(0.98); }
+  100% { opacity: 1; transform: scale(1.02); }
+}
+
+/* 畫布與墨水疊加融合 */
+canvas { 
+  position: absolute; inset: 0; z-index: 1; 
+  mix-blend-mode: multiply; 
+}
+
+/* 書法回覆區域與墨暈動畫 */
+#reply-layer { 
+  position: absolute; top: 15%; left: 70px; right: 25px; bottom: 80px; 
+  z-index: 2; pointer-events: none; overflow: hidden; 
+  word-break: break-all; overflow-wrap: break-word; 
+}
+.reply-char {
+  display: inline; 
+  color: #1a120c; 
+  font-size: 34px; line-height: 1.8;
+  mix-blend-mode: multiply; 
+  text-shadow: 0px 0px 2px rgba(26, 18, 12, 0.4); 
+  opacity: 0; 
+  filter: blur(8px); 
+  transform: scale(0.95);
+  transition: opacity 0.8s ease, filter 0.8s ease-out, transform 0.8s ease-out;
+}
+.reply-char.show { 
+  opacity: 0.92; 
+  filter: blur(0px); 
+  transform: scale(1);
+}
+.reply-char[data-font="ma"] { font-family: 'Ma Shan Zheng', serif; }
+.reply-char[data-font="zhi"] { font-family: 'Zhi Mang Xing', serif; }
+.reply-char[data-font="liu"] { font-family: 'Liu Jian Mao Cao', serif; }
+.reply-char[data-font="long"] { font-family: 'Long Cang', serif; }
+
+/* 頂部按鈕 */
+.top-btns { position: fixed; top: 16px; right: 16px; z-index: 20; display: flex; gap: 12px; }
+.btn-circle { 
+  width: 44px; height: 44px; border-radius: 50%; 
+  background: rgba(255, 255, 255, 0.3); border: 1px solid rgba(139,115,85,0.25); 
+  font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; 
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08); transition: all 0.2s; color: #4a3424;
+}
+.btn-circle:hover { background: rgba(255, 255, 255, 0.6); transform: translateY(-2px); }
+.btn-circle:active { transform: scale(0.92); }
+
+/* 狀態列 */
+#status { 
+  position: fixed; bottom: 35px; left: 50%; transform: translateX(-50%) translateY(10px); 
+  background: rgba(40, 25, 15, 0.85); color: #efe7d6; padding: 10px 24px; 
+  border-radius: 30px; font-size: 14px; letter-spacing: 1px; z-index: 10; 
+  pointer-events: none; opacity: 0; transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
+  white-space: nowrap; box-shadow: 0 10px 25px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1);
+}
+#status.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 歷史記憶視窗 */
+#history-sheet { 
+  background: #fbf6ec; width: 100%; max-width: 500px; max-height: 80dvh; 
+  border-radius: 20px; padding: 24px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.4); transform: translateY(0); transition: transform 0.3s;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+}
+.overlay.hidden #history-sheet { transform: translateY(100%); }
+#history-sheet h3 { font-size: 18px; margin-bottom: 20px; color: #3d2a1b; text-align: center; }
+.mem-item { padding: 16px 0; border-bottom: 1px dashed #d4c5b0; display: flex; gap: 16px; align-items: flex-start; }
+.mem-item:last-child { border: none; }
+.mem-thumb { width: 64px; height: 64px; border-radius: 12px; object-fit: cover; background: #e8dfcc; border: 1px solid #d4c5b0; mix-blend-mode: multiply; }
+.mem-body { flex: 1; min-width: 0; }
+.mem-date { font-size: 11px; color: #a39581; margin-bottom: 6px; }
+.mem-user { font-size: 13px; color: #5c4b3a; margin-bottom: 6px; background: rgba(139,115,85,0.1); padding: 6px 10px; border-radius: 8px; display: inline-block; }
+.mem-reply { font-size: 16px; color: #2c1e16; font-family: 'Georgia', serif; line-height: 1.6; }
+.mem-del { background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px 8px; color: #c44; opacity: 0.4; transition: opacity 0.2s; }
+.mem-del:hover { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div class="overlay" id="settings">
+  <div class="card">
+    <h2>🪄 魔法日記</h2>
+    <div class="sub">寫下問題，日記將會回應你</div>
+    <label>Groq API Key</label>
+    <input type="password" id="apiKey" placeholder="gsk_..." autocomplete="off">
+    <div class="hint">請至 <a href="https://console.groq.com/keys" target="_blank" style="color:#8b7355; font-weight:bold;">Groq Console</a> 免費獲取金鑰。</div>
+    
+    <label>魔法模型</label>
+    <select id="apiModel">
+      <option value="qwen/qwen3.6-27b">qwen/qwen3.6-27b (專屬推薦)</option>
+    </select>
+    
+    <label>浮現字體</label>
+    <select id="fontStyle">
+      <option value="ma">馬善政（行書）</option>
+      <option value="zhi">指芒果行（行草）</option>
+      <option value="liu">劉建茅草（草書）</option>
+      <option value="long">龍藏（手寫）</option>
+    </select>
+    
+    <label>回覆語言</label>
+    <select id="replyLang">
+      <option value="繁體中文">繁體中文</option>
+      <option value="简体中文">简体中文</option>
+      <option value="English">English</option>
+    </select>
+    
+    <div class="row">
+      <button class="secondary" onclick="closeSettings()">收起</button>
+      <button class="primary" onclick="startWriting()">開始書寫 ✨</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="history-overlay">
+  <div id="history-sheet">
+    <h3>📖 殘留的記憶</h3>
+    <div id="history-list"></div>
+    <div class="row" style="margin-top:24px">
+      <button class="secondary" onclick="closeHistory()">關閉</button>
+      <button class="secondary" onclick="if(confirm('確定要抹除所有的記憶嗎？')){localStorage.removeItem('riddle-mem');renderHistory();}">抹除全部</button>
+    </div>
+  </div>
+</div>
+
+<div id="diary">
+  <canvas id="canvas"></canvas>
+  <div id="reply-layer"></div>
+</div>
+
+<div class="top-btns">
+  <button class="btn-circle" onclick="showHistory()" title="歷史記憶">📖</button>
+  <button class="btn-circle" onclick="clearPage()" title="清除畫布">🗑️</button>
+  <button class="btn-circle" onclick="openSettings()" title="日記設定">⚙️</button>
+</div>
+
+<div id="status"></div>
+
+<script>
+var $ = function(s){ return document.getElementById(s); };
+
+function openSettings(){ $('settings').classList.remove('hidden'); }
+function closeSettings(){ $('settings').classList.add('hidden'); }
+function closeHistory(){ $('history-overlay').classList.add('hidden'); }
+
+try {
+  var saved = JSON.parse(localStorage.getItem('riddle-cfg') || '{}');
+  if(saved.apiKey) $('apiKey').value = saved.apiKey;
+  if(saved.apiModel) $('apiModel').value = saved.apiModel;
+  if(saved.fontStyle) $('fontStyle').value = saved.fontStyle;
+  if(saved.replyLang) $('replyLang').value = saved.replyLang;
+  if(saved.apiKey) closeSettings(); else openSettings();
+} catch(e) { openSettings(); }
+
+function startWriting(){
+  var cfg = {
+    apiKey: $('apiKey').value.trim(),
+    apiModel: $('apiModel').value,
+    fontStyle: $('fontStyle').value,
+    replyLang: $('replyLang').value,
+  };
+  if(!cfg.apiKey){ alert('請填寫 API Key 才能喚醒日記的魔力喔！'); return; }
+  try { localStorage.setItem('riddle-cfg', JSON.stringify(cfg)); } catch(e){}
+  closeSettings();
+}
+
+// ===== 畫布與手寫 =====
+var canvas = $('canvas'), ctx = canvas.getContext('2d');
+var drawing = false, idleTimer = null, hasWritten = false, querying = false;
+var allStrokes = [], cur = [];
+
+function resize(){ 
+  canvas.width = innerWidth; canvas.height = innerHeight; 
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';  
+  redraw(); 
+}
+addEventListener('resize', resize); resize();
+
+function ppos(e){ var t = e.touches ? e.touches[0] : e; return {x:t.clientX, y:t.clientY, pressure: t.force || 0.5}; }
+
+function startDraw(e){
+  e.preventDefault(); if(querying) return;
+  drawing = true; cur = [ppos(e)];
+  clearTimeout(idleTimer); hideReply();
+}
+function moveDraw(e){
+  e.preventDefault(); if(!drawing) return;
+  var p = ppos(e); cur.push(p);
+  if(cur.length < 2) return;
+  var a = cur[cur.length-2], b = cur[cur.length-1];
+  ctx.beginPath();
+  ctx.strokeStyle = '#1a120c'; 
+  ctx.lineWidth = 1.8 + (b.pressure || 0.5) * 2.8; 
+  ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+}
+function endDraw(e){
+  if(e) e.preventDefault();
+  if(!drawing) return; drawing = false;
+  if(cur.length > 2){ allStrokes.push(cur.slice()); hasWritten = true; }
+  cur = [];
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(function(){ if(hasWritten && allStrokes.length) commitPage(); }, 1500);
+}
+
+canvas.addEventListener('touchstart', startDraw, {passive:false});
+canvas.addEventListener('touchmove', moveDraw, {passive:false});
+canvas.addEventListener('touchend', endDraw, {passive:false});
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', moveDraw);
+canvas.addEventListener('mouseup', endDraw);
+canvas.addEventListener('mouseleave', function(){endDraw();});
+
+function redraw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  allStrokes.forEach(function(s){
+    if(s.length<2) return;
+    for(var i=1;i<s.length;i++){
+      ctx.beginPath(); ctx.strokeStyle='#1a120c';
+      ctx.lineWidth = 1.8 + (s[i].pressure||0.5)*2.8; 
+      ctx.moveTo(s[i-1].x,s[i-1].y); ctx.lineTo(s[i].x,s[i].y); ctx.stroke();
+    }
+  });
+}
+
+function fadeOutInk(){
+  return new Promise(function(resolve){
+    var a = 1;
+    var step = function(){
+      a -= 0.05;
+      if(a <= 0){ ctx.clearRect(0,0,canvas.width,canvas.height); resolve(); return; }
+      ctx.save(); ctx.globalAlpha = a;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      redraw(); ctx.restore();
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+// ===== UI 與動畫 =====
+function showStatus(m){ var s=$('status'); s.textContent=m; s.classList.add('show'); }
+function hideStatus(){ $('status').classList.remove('show'); }
+function hideReply(){ $('reply-layer').innerHTML=''; }
+
+function animateReply(text){
+  return new Promise(function(resolve){
+    var cfg = JSON.parse(localStorage.getItem('riddle-cfg') || '{}');
+    var fontKey = cfg.fontStyle || 'ma';
+    var layer = $('reply-layer');
+    layer.innerHTML='';
+    
+    var html = '';
+    for(var i=0; i<text.length; i++){
+      var ch = text[i];
+      if(ch === '\n'){ html += '<br>'; continue; }
+      if(ch === ' '){ html += '&nbsp;'; continue; }
+      html += '<span class="reply-char" data-font="'+fontKey+'">'+ch+'</span>';
+    }
+    layer.innerHTML = html;
+    
+    var spans = layer.querySelectorAll('.reply-char');
+    var idx = 0;
+    function showNext(){
+      if(idx >= spans.length){ resolve(); return; }
+      spans[idx].classList.add('show');
+      idx++;
+      var ch = spans[idx-1].textContent;
+      var delay = /[\u4e00-\u9fff]/.test(ch) ? 120 : 60;
+      setTimeout(showNext, delay + Math.random()*50);
+    }
+    showNext();
+  });
+}
+
+// ===== 核心 API 請求與強韌的 JSON 解析 =====
+function commitPage(){
+  if(querying) return;
+  querying=true;
+
+  // 1. 給 AI 辨識用 (Max 512px)
+  var apiCanvas = document.createElement('canvas');
+  var apiScale = Math.min(1, 512 / Math.max(canvas.width, canvas.height));
+  apiCanvas.width = Math.round(canvas.width * apiScale);
+  apiCanvas.height = Math.round(canvas.height * apiScale);
+  var apiCtx = apiCanvas.getContext('2d');
+  apiCtx.fillStyle = '#f5f0e8'; apiCtx.fillRect(0, 0, apiCanvas.width, apiCanvas.height);
+  apiCtx.drawImage(canvas, 0, 0, apiCanvas.width, apiCanvas.height);
+  var b64_api = apiCanvas.toDataURL('image/jpeg', 0.6).split(',')[1]; 
+
+  // 2. 歷史縮圖用 (Max 150px)
+  var thumbCanvas = document.createElement('canvas');
+  var thumbScale = Math.min(1, 150 / Math.max(canvas.width, canvas.height));
+  thumbCanvas.width = Math.round(canvas.width * thumbScale);
+  thumbCanvas.height = Math.round(canvas.height * thumbScale);
+  var thumbCtx = thumbCanvas.getContext('2d');
+  thumbCtx.fillStyle = '#f5f0e8'; thumbCtx.fillRect(0, 0, thumbCanvas.width, thumbCanvas.height);
+  thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
+  var b64_thumb = thumbCanvas.toDataURL('image/jpeg', 0.4).split(',')[1]; 
+
+  fadeOutInk().then(function(){ allStrokes=[]; hasWritten=false; });
+  showStatus('墨水正在下沉...');
+
+  var cfg = JSON.parse(localStorage.getItem('riddle-cfg') || '{}');
+  var mem = JSON.parse(localStorage.getItem('riddle-mem') || '[]');
+
+  if(!cfg.apiKey){
+    hideStatus();
+    animateReply('請點擊右上方 ⚙️ 輸入 Groq 金鑰以喚醒日記。');
+    querying=false; return;
+  }
+
+  // 3. 升級版提示詞：強烈禁止 <think>
+  var messages = [
+    {
+      role: 'system', 
+      content: '你是一本具有魔力的日記本。請閱讀使用者最新寫下的圖片內容，並給予簡短、溫暖的回覆（使用'+(cfg.replyLang||'繁體中文')+'）。\n' +
+               '【絕對禁止】：禁止生成任何 <think> 標籤與思考過程！\n' +
+               '【輸出格式】：務必只以純 JSON 格式輸出：\n' +
+               '{\n  "user_text": "你識別出的使用者手寫文字",\n  "reply": "你作為日記的回覆內容"\n}'
+    }
+  ];
+
+  mem.slice(-3).forEach(function(m){
+    messages.push({ role: 'user', content: '我之前寫了：「' + m.user_text + '」' });
+    messages.push({ role: 'assistant', content: m.reply });
+  });
+
+  messages.push({
+    role: 'user', 
+    content: [
+      { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64_api } },
+      { type: 'text', text: '請解析圖片並以 JSON 格式回覆。千萬不要輸出 <think>。' }
+    ]
+  });
+
+  var model = cfg.apiModel || 'qwen/qwen3.6-27b';
+
+  fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + cfg.apiKey },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      max_tokens: 2048, // ⚠️ 將 Token 限制從 1024 翻倍為 2048，防止模型話沒說完被切斷
+      temperature: 0.7
+    })
+  })
+  .then(function(r){
+    if(r.status === 429) throw new Error('429');
+    if(!r.ok) return r.text().then(function(t){ throw new Error('API '+r.status+': '+t.slice(0,50)); });
+    return r.json();
+  })
+  .then(function(d){
+    var rawText = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
+    if(!rawText) throw new Error('魔法干擾，日記沒有反應。');
+
+    // 清洗 <think> 標籤 (包含被截斷的標籤)
+    rawText = rawText.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '').trim();
+    rawText = rawText.replace(/^```json/i, '').replace(/```$/i, '').trim();
+
+    if(!rawText) throw new Error('墨水痕跡太過模糊，湯姆還在思考中...'); // 如果清完 think 變空字串
+
+    var parsed = { user_text: "無法辨識", reply: "" };
+    
+    // 終極防呆 JSON 萃取
+    try {
+      var jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error("No JSON bracket found");
+      }
+    } catch(e) {
+      console.warn("JSON Parse Error, trying regex extraction.", e);
+      // 如果 JSON 破裂，嘗試用正則硬把 reply 內容挖出來
+      var replyMatch = rawText.match(/"reply"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+      if (replyMatch) {
+        parsed.reply = replyMatch[1].replace(/\\n/g, '\n');
+      } else {
+        // 真的抓不到，就把破爛的文字當作回覆，並去掉討厭的括號
+        parsed.reply = rawText.replace(/[\{\}"]/g, '').replace(/reply:/i, '').replace(/user_text:.*?,/i, '').trim();
+      }
+    }
+
+    if(!parsed.reply) throw new Error('湯姆陷入了沉思，請再試一次。');
+
+    hideStatus();
+    
+    var newMem = { 
+      img: b64_thumb, 
+      user_text: parsed.user_text || "無法辨識", 
+      reply: parsed.reply, 
+      ts: Date.now() 
+    };
+    mem.push(newMem);
+    if(mem.length > 20) mem.splice(0, mem.length - 20); 
+    localStorage.setItem('riddle-mem', JSON.stringify(mem));
+
+    return animateReply(parsed.reply);
+  })
+  .then(function(){
+    setTimeout(function(){
+      var layer = $('reply-layer');
+      var chars = layer.querySelectorAll('.reply-char');
+      var op = 1;
+      var fo = function(){
+        op -= 0.03;
+        if(op <= 0){ layer.innerHTML=''; return; }
+        for(var i=0; i<chars.length; i++) chars[i].style.opacity = op;
+        requestAnimationFrame(fo);
+      };
+      fo();
+    }, 8000);
+  })
+  .catch(function(err){
+    console.error('API Error:', err); hideStatus();
+    if(err.message === '429'){
+      animateReply('魔力暫時耗盡... 日記需要休息片刻。如有專屬金鑰可至右上角 ⚙️ 設定。');
+    } else {
+      animateReply('日記發出了奇怪的聲音... ' + err.message.slice(0, 30));
+    }
+  })
+  .finally(function(){ querying = false; });
+}
+
+// ===== 歷史紀錄介面 =====
+function showHistory(){ renderHistory(); $('history-overlay').classList.remove('hidden'); }
+function renderHistory(){
+  var mem = JSON.parse(localStorage.getItem('riddle-mem') || '[]');
+  var list = $('history-list');
+  if(!mem.length){ list.innerHTML='<p style="text-align:center;color:#999;padding:40px">書頁上還沒有任何記憶...</p>'; return; }
+  list.innerHTML = mem.slice().reverse().map(function(m, i){
+  
