@@ -2,8 +2,9 @@
 name = "riddle-backend"
 main = "worker.js"
 compatibility_date = "2024-03-20"
+account_id = "01e18ae4963b3414b15090fde91ef017"
 
-# 允許跨域請求 (設定為 * 代表允許你的前端呼叫)
+# 允許跨域請求 (CORS)，設定為 * 代表允許你的前端呼叫
 [vars]
 ALLOWED_ORIGIN = "*"
 
@@ -12,4 +13,3 @@ ALLOWED_ORIGIN = "*"
 binding = "DB"
 database_name = "riddle-db"
 database_id = "2c8b5570-44b1-48a9-a067-eb1a0e010f35"
-
