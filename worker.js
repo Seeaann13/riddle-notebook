@@ -1,4 +1,4 @@
-// worker.js
+// worker.js - 魔法日記後端服務 (Cloudflare Worker + D1)
 
 // ==========================================
 // 🪄 隱藏魔法關鍵字劇本 (彩蛋觸發區)
@@ -18,14 +18,14 @@ const MAGIC_TRIGGERS = [
   { words: ["麻瓜", "muggle", "泥巴種", "mudblood"], whisper: "【隱藏狀態】：聽到麻瓜或麻瓜出身，你毫不掩飾你的厭惡與優越感。" }
 ];
 
-// 暫停輔助函數 (智慧等待用)
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default {
   async fetch(request, env, ctx) {
-    // 1. CORS 設定：允許前端存取
+    // 動態 Origin CORS 防護
+    const clientOrigin = request.headers.get("Origin") || "*";
     const corsHeaders = {
-      "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
+      "Access-Control-Allow-Origin": clientOrigin,
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization"
     };
@@ -38,9 +38,14 @@ export default {
     try {
       const url = new URL(request.url);
 
-      // 路由：處理聊天 API
+      // 路由 1: 對話聊天 API
       if (request.method === "POST" && url.pathname === "/api/chat") {
         return await handleChat(request, env, corsHeaders);
+      }
+
+      // 路由 2: 歷史紀錄查詢 API
+      if (request.method === "GET" && url.pathname === "/api/history") {
+        return await handleHistory(request, env, corsHeaders, url);
       }
 
       return new Response(JSON.stringify({ error: "API 路徑錯誤" }), { status: 404, headers: corsHeaders });
@@ -51,43 +56,59 @@ export default {
   }
 };
 
+// ==========================================
+// 📖 處理歷史紀錄查詢
+// ==========================================
+async function handleHistory(request, env, corsHeaders, url) {
+  const sessionId = url.searchParams.get("session_id");
+  if (!sessionId) {
+    return new Response(JSON.stringify({ error: "缺少 session_id" }), { status: 400, headers: corsHeaders });
+  }
+
+  const res = await env.DB.prepare(
+    `SELECT user_text, ai_reply, created_at FROM conversations WHERE session_id = ? ORDER BY created_at DESC LIMIT 15`
+  ).bind(sessionId).all();
+
+  return new Response(JSON.stringify({ conversations: res.results || [] }), { status: 200, headers: corsHeaders });
+}
+
+// ==========================================
+// 💬 處理對話請求
+// ==========================================
 async function handleChat(request, env, corsHeaders) {
   const body = await request.json();
-  const { session_id, user_text, image_b64 } = body;
+  const { session_id, user_text, image_b64, user_api_key } = body;
 
   if (!session_id || !image_b64) {
     return new Response(JSON.stringify({ error: "缺少必要參數 (session_id 或圖片)" }), { status: 400, headers: corsHeaders });
   }
 
-  // ==========================================
-  // 🗄️ D1 資料庫操作：紀錄使用者與歷史
-  // ==========================================
-  await env.DB.prepare(`INSERT OR IGNORE INTO sessions (session_id) VALUES (?)`).bind(session_id).run();
-  await env.DB.prepare(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE session_id = ?`).bind(session_id).run();
+  const safeUserText = user_text || "";
 
-  // 取得最近 3 筆歷史對話
+  // 1. D1 批量（Batch）操作：紀錄 Session 並更新時間（降低通訊延遲）
+  await env.DB.batch([
+    env.DB.prepare(`INSERT OR IGNORE INTO sessions (session_id) VALUES (?)`).bind(session_id),
+    env.DB.prepare(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE session_id = ?`).bind(session_id)
+  ]);
+
+  // 2. 抓取最近 3 筆歷史紀錄
   const historyRes = await env.DB.prepare(
     `SELECT user_text, ai_reply FROM conversations WHERE session_id = ? ORDER BY created_at DESC LIMIT 3`
   ).bind(session_id).all();
-  const history = historyRes.results.reverse();
+  const history = (historyRes.results || []).reverse();
 
-  // ==========================================
-  // 🔮 魔法彩蛋掃描
-  // ==========================================
+  // 3. 掃描隱藏彩蛋
   let secretWhisper = "";
-  // 把剛剛手寫辨識出來的字 + 歷史紀錄全部組起來掃描
-  const recentText = (user_text + " " + history.map(h => h.user_text).join(" ")).toLowerCase();
+  const recentText = (safeUserText + " " + history.map(h => h.user_text).join(" ")).toLowerCase();
   
   for (const trigger of MAGIC_TRIGGERS) {
     if (trigger.words.some(word => recentText.includes(word))) {
       secretWhisper = `\n${trigger.whisper}`;
-      break; // 觸發最強烈的一個狀態即可
+      break;
     }
   }
 
-  // ==========================================
-  // 🧠 組裝 Groq 提示詞
-  // ==========================================
+  // 4. 組裝提示詞
   const messages = [
     {
       role: "system",
@@ -101,13 +122,11 @@ async function handleChat(request, env, corsHeaders) {
     }
   ];
 
-  // 帶入歷史記憶 (純文字)
   history.forEach(m => {
     messages.push({ role: "user", content: `我之前寫了：「${m.user_text}」` });
     messages.push({ role: "assistant", content: m.ai_reply });
   });
 
-  // 帶入當前使用者畫的圖片
   messages.push({
     role: "user",
     content: [
@@ -116,58 +135,46 @@ async function handleChat(request, env, corsHeaders) {
     ]
   });
 
-  // ==========================================
-  // 🔄 智慧輪詢與排隊機制 (Smart Load Balancing)
-  // ==========================================
-  // 抓取環境變數裡的 3 把 Key
-  const apiKeys = [env.GROQ_KEY_1, env.GROQ_KEY_2, env.GROQ_KEY_3].filter(Boolean);
+  // 5. 選擇 API Key 陣列（自備 Key 優先 + 3 把內置 Key 輪詢）
+  const apiKeys = [];
+  if (user_api_key && user_api_key.trim() !== '') {
+    apiKeys.push(user_api_key.trim());
+  }
+  [env.GROQ_KEY_1, env.GROQ_KEY_2, env.GROQ_KEY_3].forEach(k => { if(k) apiKeys.push(k); });
   
   if (apiKeys.length === 0) {
     return new Response(JSON.stringify({ error: "伺服器未配置 API Key" }), { status: 500, headers: corsHeaders });
   }
 
-  // 洗牌演算法 (Fisher-Yates Shuffle)：隨機打亂 3 把 Key 的順序
+  // 洗牌打亂順序
   for (let i = apiKeys.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [apiKeys[i], apiKeys[j]] = [apiKeys[j], apiKeys[i]];
   }
 
-  let groqRes = null;
   let successData = null;
   let allKeysExhausted = true;
 
-  // 依序嘗試每一把 Key
+  // 6. 輪詢與智慧等待
   for (const key of apiKeys) {
-    groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${key}`
-      },
-      body: JSON.stringify({
-        model: "qwen/qwen3.6-27b",
-        messages: messages,
-        max_tokens: 2048,
-        temperature: 0.75 
-      })
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+      body: JSON.stringify({ model: "qwen/qwen3.6-27b", messages, max_tokens: 2048, temperature: 0.75 })
     });
 
     if (groqRes.ok) {
       successData = await groqRes.json();
       allKeysExhausted = false;
-      break; // 成功就跳出迴圈
+      break;
     }
 
     if (groqRes.status === 429) {
-      // 遇到 429，偷看要等多久
       const retryAfter = groqRes.headers.get('retry-after');
-      const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 2; // 如果沒寫，預設等 2 秒
+      const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 2;
 
-      // 如果只要等 3 秒以內，我們就在半空中懸停等待，然後用同一把 Key 再試一次！
       if (waitSeconds <= 3) {
         await sleep(waitSeconds * 1000);
-        
-        // 再次嘗試
         const retryRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
@@ -180,21 +187,19 @@ async function handleChat(request, env, corsHeaders) {
           break;
         }
       }
-      // 如果等超過 3 秒，或者重試還是失敗，就直接進入迴圈的下一步，換下一把 Key 測試
     }
   }
 
-  // 如果 3 把 Key 都試過了，還是全部失敗 (代表流量真的太大)
   if (allKeysExhausted) {
     return new Response(JSON.stringify({ error: "429" }), { status: 429, headers: corsHeaders });
   }
 
-  // ==========================================
-  // 🧹 清洗 JSON 與儲存結果
-  // ==========================================
-  let rawText = successData.choices[0].message.content;
-  
-  // 暴力清洗 <think> 與 Markdown 標籤
+  // 7. 防呆擷取與 JSON 清洗 (包含 Optional Chaining 防崩潰)
+  let rawText = successData?.choices?.[0]?.message?.content;
+  if (!rawText) {
+    return new Response(JSON.stringify({ error: "模型回傳無效內容" }), { status: 502, headers: corsHeaders });
+  }
+
   rawText = rawText.replace(/<think>[\s\S]*?(<\/think>|$)/gi, '').replace(/^```json/i, '').replace(/```$/i, '').trim();
   
   let parsed = { user_text: "無法辨識", reply: "" };
@@ -203,20 +208,25 @@ async function handleChat(request, env, corsHeaders) {
     if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
     else throw new Error("無 JSON 括號");
   } catch(e) {
-    // Regex 硬抓
     const replyMatch = rawText.match(/"reply"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
     if (replyMatch) parsed.reply = replyMatch[1].replace(/\\n/g, '\n');
     else parsed.reply = rawText.replace(/[\{\}"]/g, '').replace(/reply:/i, '').replace(/user_text:.*?,/i, '').trim();
   }
 
-  // 將成功的對話存入 D1 資料庫
+  // 8. 存入 D1 並自動清理超額對話（只留該 Session 最近 20 筆，防爆資料庫容量）
   if (parsed.reply) {
-    await env.DB.prepare(
-      `INSERT INTO conversations (session_id, user_text, ai_reply) VALUES (?, ?, ?)`
-    ).bind(session_id, parsed.user_text || "無法辨識", parsed.reply).run();
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO conversations (session_id, user_text, ai_reply) VALUES (?, ?, ?)`
+      ).bind(session_id, parsed.user_text || "無法辨識", parsed.reply),
+      
+      env.DB.prepare(
+        `DELETE FROM conversations WHERE session_id = ? AND id NOT IN (
+           SELECT id FROM conversations WHERE session_id = ? ORDER BY created_at DESC LIMIT 20
+         )`
+      ).bind(session_id, session_id)
+    ]);
   }
 
-  // 回傳給前端
   return new Response(JSON.stringify({ reply: parsed.reply, user_text: parsed.user_text }), { status: 200, headers: corsHeaders });
 }
-
