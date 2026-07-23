@@ -214,8 +214,8 @@
       <h2>🪄 魔法日記</h2>
       <div class="sub">設定與備用 API</div>
       <label>後端 Worker API 網址</label>
-      <input type="text" id="workerUrl" placeholder="/api/chat 或完整網址" autocomplete="off">
-      <div class="hint">預設直接呼叫 `/api/chat`</div>
+      <input type="text" id="workerUrl" placeholder="伺服器網址" autocomplete="off">
+      <div class="hint">預設已自動連接至您的魔法伺服器</div>
       
       <label>自備 Groq API Key (選填)</label>
       <input type="password" id="apiKey" placeholder="伺服器滿載時將自動改用您的 Key" autocomplete="off">
@@ -376,7 +376,6 @@ function enterFromIntro() {
     startTutorialAnimation();
   }, 1500);
 }
-
 // =========================================
 // PART 2: 1000x1600 鎖定畫布教學邏輯
 // =========================================
@@ -487,7 +486,8 @@ function startMainDiary() {
   mainCanvas.addEventListener('mouseup', endMainDraw);
 
   const saved = getSafeStorage('riddle-cfg', {});
-  $('workerUrl').value = saved.workerUrl || '/api/chat';
+  // 🔥 無縫綁定：直接預設載入你專屬的 Worker API
+  $('workerUrl').value = saved.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat';
   $('apiKey').value = saved.apiKey || '';
   $('fontStyle').value = saved.fontStyle || 'ma';
   $('audioToggle').value = saved.audioToggle || 'on';
@@ -495,7 +495,7 @@ function startMainDiary() {
 
 function saveSettings() {
   const cfg = { 
-    workerUrl: $('workerUrl').value.trim() || '/api/chat',
+    workerUrl: $('workerUrl').value.trim() || 'https://riddle-notebook.seeaann10.workers.dev/api/chat',
     apiKey: $('apiKey').value.trim(), 
     fontStyle: $('fontStyle').value,
     audioToggle: $('audioToggle').value 
@@ -650,6 +650,7 @@ function mainCommit(){
   mainShowStatus('墨水正在下沉...');
 
   const cfg = getSafeStorage('riddle-cfg', {});
+  // 🔥 無縫綁定：這裡也會預設抓你的 Worker API
   const workerUrl = cfg.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat';
   const sid = localStorage.getItem('riddle_session');
 
@@ -716,7 +717,8 @@ function showHistory() {
 
   const sid = localStorage.getItem('riddle_session');
   const cfg = getSafeStorage('riddle-cfg', {});
-  const workerUrl = (cfg.workerUrl || '/api/chat').replace(/\/chat$/, '/history');
+  // 🔥 無縫綁定：歷史紀錄也一併預設抓取
+  const workerUrl = (cfg.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat').replace(/\/chat$/, '/history');
 
   fetch(workerUrl + '?session_id=' + sid)
     .then(r => r.json())
