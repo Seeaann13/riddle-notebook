@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>魔法日記</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Liu+Jian+Mao+Cao&family=Long+Cang&family=Noto+Serif+TC:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  /* =========================================
+     1. 全局共用與動態歲月紙張
+     ========================================= */
+  :root {
+    --sepia-level: 0%;
+    --vignette-alpha: 0.5;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { 
+    background-color: #d8cdb8; font-family: 'Noto Serif TC', serif; 
+    overflow: hidden; height: 100dvh; width: 100vw; touch-action: none; 
+    filter: sepia(var(--sepia-level));
+    transition: filter 3s ease-in-out;
+    background-image: 
+      radial-gradient(circle at center, transparent 15%, rgba(45, 25, 15, var(--vignette-alpha)) 140%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.06'/%3E%3C/svg%3E");
+  }
+
+  /* =========================================
+     2. 儲思盆開場層 (Pensieve Intro Layer)
+     ========================================= */
+  #intro-layer {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 3000;
+    background: radial-gradient(circle at center, #1b1612 0%, #050403 100%);
+    overflow: hidden;
+  }
+
+  /* 魔法陣環 */
+  .rune-ring {
+    position: absolute; top: 50%; left: 50%;
+    border-radius: 50%; pointer-events: none;
+    transform: translate(-50%, -50%);
+    opacity: 0.6;
+  }
+  .rune-inner {
+    width: 45vw; height: 45vw;
+    border: 1px dashed rgba(220, 180, 110, 0.15);
+    border-width: 1px 3px; box-shadow: 0 0 40px rgba(220, 180, 110, 0.05) inset;
+    animation: spinRune 40s linear infinite;
+  }
+  .rune-outer {
+    width: 65vw; height: 65vw;
+    border: 1px dotted rgba(220, 180, 110, 0.2);
+    animation: spinRuneReverse 60s linear infinite;
+  }
+  @keyframes spinRune { 0% { transform: translate(-50%, -50%) rotate(0deg); } 100% { transform: translate(-50%, -50%) rotate(360deg); } }
+  @keyframes spinRuneReverse { 0% { transform: translate(-50%, -50%) rotate(360deg); } 100% { transform: translate(-50%, -50%) rotate(0deg); } }
+
+  /* 核心發光體 */
+  .magic-core {
+    position: absolute; width: 35vw; height: 35vw; border-radius: 50%;
+    background: radial-gradient(circle, rgba(220, 180, 110, 0.15) 0%, rgba(40, 25, 15, 0.3) 50%, transparent 80%);
+    filter: blur(20px); z-index: 1; opacity: 0; 
+    animation: corePulse 5s infinite alternate ease-in-out;
+  }
+  @keyframes corePulse { 0% { transform: scale(0.9); opacity: 0.4; } 100% { transform: scale(1.2); opacity: 0.9; } }
+
+  /* 記憶星塵微粒 */
+  .particles { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .particle {
+    position: absolute; border-radius: 50%; 
+    background: #fdf5e6;
+    box-shadow: 0 0 12px #ffe4b5, 0 0 25px rgba(255, 220, 150, 0.3);
+    opacity: 0; animation: floatUp var(--duration) infinite cubic-bezier(0.35, 0.1, 0.25, 1); 
+    animation-delay: var(--delay); left: var(--left); width: var(--size); height: var(--size);
+  }
+  @keyframes floatUp {
+    0% { transform: translate(0, 100vh) scale(0.1); opacity: 0; filter: blur(3px); }
+    30% { opacity: 0.8; filter: blur(0px); transform: translate(var(--drift), 40vh) scale(1); }
+    70% { opacity: 0.6; transform: translate(calc(var(--drift) * -0.5), -10vh) scale(0.8); }
+    100% { transform: translate(0, -30vh) scale(0.2); opacity: 0; filter: blur(4px); }
+  }
+
+  /* 標題與文字層 */
+  .intro-text-layer {
+    position: absolute; text-align: center; z-index: 10;
+    opacity: 0; filter: blur(15px); transform: scale(0.95);
+    transition: opacity 2s cubic-bezier(0.25, 1, 0.5, 1), filter 2s ease, transform 2.5s ease-out; pointer-events: none;
+  }
+  .intro-text-layer.active { opacity: 1; filter: blur(0px); transform: scale(1); }
+  .intro-text-layer.exit { opacity: 0; filter: blur(12px); transform: scale(1.05) translateY(-20px); }
+  
+  .disclaimer { font-size: 13px; letter-spacing: 2px; color: #a89a92; line-height: 2; text-shadow: 0 2px 8px rgba(0,0,0,0.9); }
+  .disclaimer span { color: #7a6b63; font-size: 11px; }
+  
+  /* 優雅流光金標題 */
+  .intro-title { 
+    font-family: 'Cinzel', serif; font-size: 42px; letter-spacing: 6px;
+    background: linear-gradient(120deg, #c5a059 0%, #fdf5e6 30%, #c5a059 60%, #8b6d31 80%, #c5a059 100%);
+    background-size: 200% auto;
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    text-shadow: 0 4px 25px rgba(197, 160, 89, 0.3);
+    animation: shineGold 6s linear infinite;
+  }
+  @keyframes shineGold { to { background-position: 200% center; } }
+  
+  .intro-subtitle { font-size: 14px; margin-top: 20px; letter-spacing: 16px; color: #d4c4b4; margin-right: -16px; text-shadow: 0 2px 12px rgba(0,0,0,0.8); opacity: 0.9; }
+  
+  /* 空靈進入按鈕 */
+  .enter-btn {
+    position: absolute; bottom: 18%; opacity: 0; z-index: 20; font-size: 12px; letter-spacing: 8px; cursor: pointer;
+    border: 1px solid rgba(197, 160, 89, 0.3); padding: 14px 42px; border-radius: 40px; 
+    background: rgba(20, 15, 10, 0.4); color: #fdf5e6; backdrop-filter: blur(5px);
+    transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1); pointer-events: none;
+    animation: pulseBtn 3s infinite alternate ease-in-out;
+  }
+  .enter-btn.show { opacity: 1; pointer-events: auto; }
+  .enter-btn:hover { background: rgba(197, 160, 89, 0.15); transform: scale(1.02); }
+  .enter-btn:active { transform: scale(0.96); background: rgba(197, 160, 89, 0.25); }
+  @keyframes pulseBtn { 
+    0% { box-shadow: 0 0 15px rgba(197, 160, 89, 0.05); } 
+    100% { box-shadow: 0 0 25px rgba(197, 160, 89, 0.3); text-shadow: 0 0 8px rgba(255,255,255,0.6); } 
+  }
+
+  /* =========================================
+     3. 教學層
+     ========================================= */
+  #tut-layer {
+    position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+    background: transparent; transition: opacity 1.5s ease;
+  }
+  #tut-canvas-stage { position: relative; z-index: 1; }
+  #tut-canvas { display: block; mix-blend-mode: multiply; }
+  #tut-tip {
+    position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+    background: rgba(30, 20, 12, 0.85); color: #efe7d6; padding: 12px 28px; border-radius: 30px; 
+    font-size: 14px; letter-spacing: 2px; z-index: 20; pointer-events: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.1);
+    transition: all 0.8s cubic-bezier(0.25, 1, 0.5, 1); opacity: 0; backdrop-filter: blur(8px);
+  }
+  #tut-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #skip-btn {
+    position: fixed; top: 20px; right: 20px; z-index: 30; background: rgba(30, 20, 12, 0.5); color: #d4c5b0;
+    border: 1px solid rgba(212,197,176,0.2); padding: 8px 20px; border-radius: 20px; font-size: 12px;
+    letter-spacing: 1.5px; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.3s ease;
+  }
+  #skip-btn:active { transform: scale(0.92); background: rgba(212,197,176,0.15); }
+  #tut-reply {
+    position: absolute; top: 40%; left: 10%; right: 10%; text-align: center; font-family: 'Ma Shan Zheng', serif;
+    font-size: 38px; color: #1a120c; mix-blend-mode: multiply; text-shadow: 0 0 3px rgba(26,18,12,0.3);
+    opacity: 0; filter: blur(12px); transition: all 1.5s cubic-bezier(0.25, 1, 0.5, 1); pointer-events: none; z-index: 10;
+  }
+  #tut-reply.show { opacity: 0.92; filter: blur(0px); }
+
+  /* =========================================
+     4. 主日記本層
+     ========================================= */
+  #main-layer { position: fixed; inset: 0; z-index: 1000; opacity: 0; transition: opacity 1.5s ease; pointer-events: none; }
+  #main-layer.active { opacity: 1; pointer-events: auto; }
+  
+  .candlelight { position: absolute; inset: 0; pointer-events: none; z-index: 0; 
+    background: radial-gradient(circle at 50% 30%, rgba(220, 145, 55, 0.06) 0%, transparent 65%); 
+    animation: flicker 5s infinite alternate ease-in-out; 
+  }
+  .red-line { position: absolute; top: 0; bottom: 0; left: 52px; width: 1.5px; background: rgba(180, 70, 70, 0.15); pointer-events: none; z-index: 0; }
+  @keyframes flicker { 0% { opacity: 0.7; transform: scale(0.97); } 100% { opacity: 1; transform: scale(1.03); } }
+
+  #main-canvas { position: absolute; inset: 0; z-index: 1; mix-blend-mode: multiply; transition: filter 0.4s ease, opacity 0.4s ease; }
+  
+  .top-btns { position: fixed; top: 16px; right: 16px; z-index: 20; display: flex; gap: 12px; }
+  .btn-circle { width: 42px; height: 42px; border-radius: 50%; background: rgba(255, 250, 240, 0.3); border: 1px solid rgba(139,115,85,0.25); font-size: 17px; cursor: pointer; backdrop-filter: blur(10px); color: #4a3424; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.06); }
+  .btn-circle:active { transform: scale(0.9); background: rgba(255, 250, 240, 0.5); }
+
+  #reply-layer { position: absolute; top: 15%; left: 70px; right: 25px; bottom: 80px; z-index: 2; pointer-events: none; overflow: hidden; word-break: break-all; opacity: 1; filter: none; }
+  
+  .reply-char { 
+    display: inline-block; color: #1a120c; font-size: 34px; line-height: 1.8; mix-blend-mode: multiply; text-shadow: 0px 0px 2px rgba(26,18,12,0.3); 
+    opacity: 0; filter: blur(12px) brightness(0.2); transform: scale(0.95) rotate(var(--rot, 0deg)) translateY(calc(var(--ty, 0px) + 6px)); 
+    transition: opacity 1s cubic-bezier(0.2, 0.8, 0.2, 1), filter 1s cubic-bezier(0.2, 0.8, 0.2, 1), transform 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); 
+  }
+  .reply-char.show { opacity: 0.93; filter: blur(0px) brightness(1); transform: scale(1) rotate(var(--rot, 0deg)) translateY(var(--ty, 0px)); }
+  
+  .reply-char[data-font="ma"] { font-family: 'Ma Shan Zheng', serif; }
+  .reply-char[data-font="zhi"] { font-family: 'Zhi Mang Xing', serif; }
+  .reply-char[data-font="liu"] { font-family: 'Liu Jian Mao Cao', serif; }
+  .reply-char[data-font="long"] { font-family: 'Long Cang', serif; }
+  
+  #status { position: fixed; bottom: 35px; left: 50%; transform: translateX(-50%) translateY(15px); background: rgba(30, 20, 12, 0.85); color: #efe7d6; padding: 12px 28px; border-radius: 40px; font-size: 13px; letter-spacing: 1.5px; z-index: 10; pointer-events: none; opacity: 0; transition: all 0.6s cubic-bezier(0.25, 1, 0.5, 1); box-shadow: 0 12px 30px rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); backdrop-filter: blur(8px); }
+  #status.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* 彈窗 UI */
+  .overlay { position: fixed; inset: 0; background: rgba(15, 10, 6, 0.6); display: flex; align-items: center; justify-content: center; z-index: 4000; backdrop-filter: blur(12px); transition: opacity 0.4s ease; touch-action: pan-y; }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card { background: rgba(252, 248, 240, 0.97); border: 1px solid rgba(139,115,85,0.25); border-radius: 24px; padding: 32px 28px; max-width: 360px; width: 100%; box-shadow: 0 30px 80px rgba(0,0,0,0.4); transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.5s ease; touch-action: pan-y; }
+  .overlay.hidden .card { transform: translateY(50px) scale(0.95); opacity: 0; }
+  .card h2 { font-size: 24px; margin-bottom: 6px; text-align: center; color: #352315; letter-spacing: 2px; }
+  .card .sub { text-align: center; font-size: 12px; color: #9a8a75; margin-bottom: 24px; letter-spacing: 0.5px; }
+  .card label { display: block; font-size: 12px; color: #6a5746; margin: 16px 0 6px; font-weight: bold; letter-spacing: 0.5px; }
+  .card input, .card select { width: 100%; padding: 12px 16px; border: 1.5px solid rgba(212,197,176,0.6); border-radius: 12px; font-size: 14px; background: #fffdf9; outline: none; transition: all .3s ease; color: #352315; }
+  .card input:focus, .card select:focus { border-color: #a3896c; background: #fff; box-shadow: 0 0 0 4px rgba(163,137,108,0.15); }
+  .card .hint { font-size: 11px; color: #a89a85; margin-top: 6px; line-height: 1.5; }
+  .card .row { display: flex; gap: 12px; margin-top: 28px; }
+  .card .row button { flex: 1; padding: 14px; border-radius: 12px; font-size: 14px; font-weight: bold; border: none; cursor: pointer; transition: all 0.3s cubic-bezier(0.25, 1, 0.5, 1); letter-spacing: 1px; }
+  .card .row .secondary { background: #efe7d6; color: #6a5746; }
+  .card .row .secondary:active { background: #e3d8c8; transform: scale(0.96); }
+  .card .row .primary { background: linear-gradient(135deg, #7a5a3f, #4a3424); color: #fffdf9; box-shadow: 0 6px 20px rgba(74,52,36,0.35); }
+  .card .row .primary:active { transform: scale(0.96); box-shadow: 0 2px 10px rgba(74,52,36,0.3); }
+
+  #history-sheet { background: #fcf8f0; width: 100%; max-width: 500px; max-height: 80dvh; border-radius: 24px; padding: 28px; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; box-shadow: 0 30px 80px rgba(0,0,0,0.5); border: 1px solid rgba(139,115,85,0.2); transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.5s ease; }
+  .overlay.hidden #history-sheet { transform: translateY(50px) scale(0.95); opacity: 0; }
+  #history-sheet h3 { font-size: 20px; margin-bottom: 20px; color: #352315; text-align: center; letter-spacing: 1.5px; }
+  .mem-item { padding: 16px 0; border-bottom: 1px dashed rgba(212,197,176,0.8); display: flex; gap: 14px; align-items: flex-start; }
+  .mem-item:last-child { border: none; }
+  .mem-body { flex: 1; min-width: 0; }
+  .mem-date { font-size: 11px; color: #b3a591; margin-bottom: 6px; letter-spacing: 0.5px; }
+  .mem-user { font-size: 13px; color: #6a5746; margin-bottom: 8px; background: rgba(163,137,108,0.1); padding: 6px 12px; border-radius: 8px; display: inline-block; word-break: break-all; }
+  .mem-reply { font-size: 16px; color: #2c1e16; font-family: 'Georgia', serif; line-height: 1.6; white-space: pre-wrap; word-break: break-all; }
+
+  #mit-attribution {
+    position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%);
+    font-size: 10px; color: rgba(139, 115, 85, 0.4); letter-spacing: 0.5px;
+    z-index: 5; pointer-events: none; text-align: center; line-height: 1.5;
+  }
+  #mit-attribution a { color: rgba(139, 115, 85, 0.55); text-decoration: none; pointer-events: auto; transition: color 0.2s; }
+  #mit-attribution a:hover { color: rgba(139, 115, 85, 0.9); text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<div id="intro-layer">
+  <div class="rune-ring rune-outer"></div>
+  <div class="rune-ring rune-inner"></div>
+  <div class="magic-core"></div>
+  <div class="particles" id="intro-particles">
+    <script>
+      for(let i=0; i<18; i++) {
+        let size = 2 + Math.random() * 4.5;
+        let left = 5 + Math.random() * 90;
+        let delay = Math.random() * 4;
+        let duration = 6 + Math.random() * 6;
+        let drift = (Math.random() - 0.5) * 50; 
+        document.write(`<div class="particle" style="--size: ${size}px; --left: ${left}%; --delay: ${delay}s; --duration: ${duration}s; --drift: ${drift}vw;"></div>`);
+      }
+    </script>
+  </div>
+  <div id="step1" class="intro-text-layer disclaimer">This is a Fan-Made Project.<br>本專案為技術展示與粉絲創作<br><span>與 J.K. Rowling 及 Warner Bros. 無官方關聯</span></div>
+  <div id="step2" class="intro-text-layer"><div class="intro-title">Tom Riddle's Diary</div><div class="intro-subtitle">魔 法 日 記</div></div>
+  <div id="step3" class="enter-btn" onclick="enterFromIntro()">觸碰以開啟</div>
+</div>
+
+<div id="tut-layer" style="display:none;">
+  <div id="tut-tip">✨ 示範：在紙上寫字...</div>
+  <button id="skip-btn" onclick="skipTutorial()">跳過教學 ✕</button>
+  <div id="tut-canvas-stage">
+    <canvas id="tut-canvas"></canvas>
+    <div id="tut-reply">「試著寫下你的祕密...」</div>
+  </div>
+</div>
+
+<div id="main-layer">
+  <div class="candlelight"></div>
+  <div class="red-line"></div>
+  <canvas id="main-canvas"></canvas>
+  <div id="reply-layer"></div>
+  
+  <div class="top-btns">
+    <button class="btn-circle" onclick="showHistory()" title="歷史記憶">📖</button>
+    <button class="btn-circle" onclick="clearMainPage()" title="清除畫布">🗑️</button>
+    <button class="btn-circle" onclick="toggleBGM()" id="topBgmBtn" title="背景音樂">🎵</button>
+    <button class="btn-circle" onclick="$('settings').classList.remove('hidden')" title="日記設定">⚙️</button>
+  </div>
+  
+  <div id="status"></div>
+  <div id="mit-attribution">
+    Inspired by <a href="https://github.com/MaximeRivest/riddle" target="_blank" rel="noopener">MaximeRivest/riddle</a> (MIT License)
+  </div>
+
+  <div class="overlay hidden" id="history-overlay">
+    <div id="history-sheet">
+      <h3>📖 殘留的記憶</h3>
+      <div id="history-list"></div>
+      <div class="row" style="margin-top:24px">
+        <button class="secondary" style="width:100%; padding:14px; border-radius:12px; border:none; font-weight:bold; cursor:pointer;" onclick="$('history-overlay').classList.add('hidden')">闔上記憶</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="settings">
+    <div class="card">
+      <h2>🪄 魔法日記</h2>
+      <div class="sub">設定與備用 API</div>
+      <label>後端 Worker API 網址</label>
+      <input type="text" id="workerUrl" placeholder="伺服器網址" autocomplete="off">
+      <div class="hint">預設已自動連接至您的魔法伺服器</div>
+      
+      <label>自備 Groq API Key (選填)</label>
+      <input type="password" id="apiKey" placeholder="伺服器滿載時將自動改用您的 Key" autocomplete="off">
+      <div class="hint">可自 <a href="https://console.groq.com/keys" target="_blank" style="color:#a3896c;">Groq Console</a> 免費獲取。</div>
+      
+      <label>浮現字體</label>
+      <select id="fontStyle">
+        <option value="ma">馬善政（行書）</option><option value="zhi">指芒果行（行草）</option>
+        <option value="liu">劉建茅草（草書）</option><option value="long">龍藏（手寫）</option>
+      </select>
+      
+      <label>聲音與震動特效</label>
+      <select id="audioToggle">
+        <option value="on">開啟（真實紙張摩擦聲 + 魔法風鈴）</option>
+        <option value="off">靜音模式</option>
+      </select>
+
+      <label>🎵 背景配樂</label>
+      <button id="bgmBtn" onclick="toggleBGM()" style="width:100%; padding:12px 16px; border:1.5px solid rgba(212,197,176,0.6); border-radius:12px; font-size:14px; background:#fffdf9; cursor:pointer; transition: all .3s ease; color:#352315; margin-top:4px;">
+        ▶ 播放古典豎琴配樂
+      </button>
+      <div class="hint">Swan Lake & Classical Harp — 輕柔典雅的古典豎琴氛圍</div>
+
+      <div class="row">
+        <button class="secondary" onclick="$('settings').classList.add('hidden')">收起</button>
+        <button class="primary" onclick="saveSettings()">儲存設定 ✨</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var $ = function(id) { return document.getElementById(id); };
+
+function getSafeStorage(key, fallback) {
+  try { const item = localStorage.getItem(key); return item ? JSON.parse(item) : fallback; } 
+  catch(e) { return fallback; }
+}
+
+// =========================================
+// 🔊 零爆音 Web Audio 聲學引擎 (溫暖古典豎琴調校)
+// =========================================
+let audioCtx = null;
+let masterGainNode = null;
+let compressorNode = null;
+let lastPenTime = 0;
+let lastDrawPos = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContextClass();
+    
+    // 動態壓限器：保護音量平滑不破音
+    compressorNode = audioCtx.createCompressor();
+    compressorNode.threshold.setValueAtTime(-4, audioCtx.currentTime);
+    compressorNode.knee.setValueAtTime(12, audioCtx.currentTime);
+    compressorNode.ratio.setValueAtTime(6, audioCtx.currentTime);
+    compressorNode.attack.setValueAtTime(0.005, audioCtx.currentTime);
+    compressorNode.release.setValueAtTime(0.15, audioCtx.currentTime);
+
+    // 總音量設定
+    masterGainNode = audioCtx.createGain();
+    masterGainNode.gain.setValueAtTime(2.5, audioCtx.currentTime);
+
+    masterGainNode.connect(compressorNode);
+    compressorNode.connect(audioCtx.destination);
+  }
+  if (audioCtx && audioCtx.state === 'suspended') { audioCtx.resume(); }
+}
+
+function getAudioDestination() { return masterGainNode || (audioCtx ? audioCtx.destination : null); }
+
+// ✒️ 寫字聲：Hann Window 邊緣平滑
+function playPenSound(currentPos) {
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off' || !audioCtx) return;
+
+  const now = audioCtx.currentTime;
+  if (now - lastPenTime < 0.038) return; 
+
+  let speed = 1.0;
+  if (currentPos && lastDrawPos) {
+    const dx = currentPos.x - lastDrawPos.x; const dy = currentPos.y - lastDrawPos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    speed = Math.min(Math.max(dist / 12, 0.4), 1.8);
+  }
+  if (currentPos) lastDrawPos = currentPos;
+  lastPenTime = now;
+
+  try {
+    const duration = 0.04;
+    const bufferSize = Math.floor(audioCtx.sampleRate * duration);
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+
+    let b0 = 0, b1 = 0, b2 = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99765 * b0 + white * 0.0990460;
+      b1 = 0.96300 * b1 + white * 0.2965164;
+      b2 = 0.57000 * b2 + white * 1.0526913;
+      const pink = (b0 + b1 + b2 + white * 0.1848) * 0.05;
+      
+      const hann = Math.sin((Math.PI * i) / bufferSize);
+      data[i] = pink * hann;
+    }
+
+    const source = audioCtx.createBufferSource(); source.buffer = buffer;
+
+    const bpf = audioCtx.createBiquadFilter(); bpf.type = 'bandpass';
+    bpf.frequency.setValueAtTime((1200 + Math.random() * 250) * (0.85 + speed * 0.15), now);
+    bpf.Q.setValueAtTime(1.1, now);
+
+    const gain = audioCtx.createGain(); const peakGain = Math.min(0.25 * speed, 0.45);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(peakGain, now + 0.006);
+    gain.gain.linearRampToValueAtTime(0, now + duration);
+
+    source.connect(bpf); bpf.connect(gain); gain.connect(getAudioDestination());
+    source.start(now);
+  } catch(e) {}
+}
+
+// 💧 逐字微音 (水晶豎琴感)
+function playCharSound() {
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off' || !audioCtx) return;
+  try {
+    const now = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+    osc.type = 'sine'; osc.frequency.setValueAtTime(520 + Math.random() * 120, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(0.08, now + 0.008);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+    osc.connect(gain); gain.connect(getAudioDestination());
+    osc.start(now); osc.stop(now + 0.05);
+  } catch(e) {}
+}
+
+// ✨ 風鈴音效
+function playMagicChime() {
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off' || !audioCtx) return;
+  try {
+    const now = audioCtx.currentTime; const duration = 1.5;
+    const masterGain = audioCtx.createGain();
+    masterGain.gain.setValueAtTime(0, now);
+    masterGain.gain.linearRampToValueAtTime(0.3, now + 0.08);
+    masterGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+
+    const baseNotes = [440.00, 523.25, 659.25, 880.00, 1046.50];
+    baseNotes.forEach((freq, i) => {
+      const osc = audioCtx.createOscillator(); osc.type = 'sine'; osc.frequency.value = freq;
+      const oscGain = audioCtx.createGain();
+      oscGain.gain.setValueAtTime(0, now + i * 0.07);
+      oscGain.gain.linearRampToValueAtTime(0.1, now + i * 0.07 + 0.02);
+      oscGain.gain.exponentialRampToValueAtTime(0.0001, now + duration - i * 0.08);
+      osc.connect(oscGain); oscGain.connect(masterGain);
+      osc.start(now + i * 0.07); osc.stop(now + duration);
+    });
+    masterGain.connect(getAudioDestination());
+  } catch(e) {}
+}
+
+// 🎼 豎琴撥弦合成器
+function playHarpNote(freq, noteTime, duration = 2.0, volume = 0.25) {
+  if (!audioCtx) return;
+  try {
+    const osc1 = audioCtx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(freq, noteTime);
+
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(freq, noteTime);
+
+    const noteGain = audioCtx.createGain();
+    noteGain.gain.setValueAtTime(0, noteTime);
+    noteGain.gain.linearRampToValueAtTime(volume, noteTime + 0.015);
+    noteGain.gain.exponentialRampToValueAtTime(0.0001, noteTime + duration);
+
+    osc1.connect(noteGain);
+    osc2.connect(noteGain);
+    noteGain.connect(getAudioDestination());
+
+    osc1.start(noteTime);
+    osc2.start(noteTime);
+    osc1.stop(noteTime + duration);
+    osc2.stop(noteTime + duration);
+  } catch(e) {}
+}
+
+// 🎼 開頭柴可夫斯基《天鵝湖》〈情景 Theme from Swan Lake〉經典豎琴主題旋律
+function playIntroSwanLakeTheme() {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  const sequence = [
+    { freq: 369.99, t: 0.00, d: 0.8 }, // F#4
+    { freq: 493.88, t: 0.50, d: 0.6 }, // B4
+    { freq: 554.37, t: 0.85, d: 0.6 }, // C#5
+    { freq: 587.33, t: 1.20, d: 0.6 }, // D5
+    { freq: 659.25, t: 1.55, d: 0.6 }, // E5
+    { freq: 739.99, t: 1.90, d: 1.0 }, // F#5
+    { freq: 587.33, t: 2.70, d: 1.0 }, // D5
+    { freq: 493.88, t: 3.50, d: 1.3 }, // B4
+    { freq: 369.99, t: 4.60, d: 0.5 }, // F#4
+    { freq: 392.00, t: 5.00, d: 0.5 }, // G4
+    { freq: 369.99, t: 5.40, d: 0.5 }, // F#4
+    { freq: 329.63, t: 5.80, d: 0.6 }, // E4
+    { freq: 369.99, t: 6.30, d: 2.0 }  // F#4
+  ];
+
+  const harpArpeggio = [
+    { freq: 123.47, t: 0.0 }, { freq: 185.00, t: 0.2 }, { freq: 246.94, t: 0.4 }, { freq: 293.66, t: 0.6 },
+    { freq: 123.47, t: 2.5 }, { freq: 185.00, t: 2.7 }, { freq: 246.94, t: 2.9 }, { freq: 293.66, t: 3.1 },
+    { freq: 123.47, t: 4.8 }, { freq: 185.00, t: 5.0 }, { freq: 246.94, t: 5.2 }, { freq: 293.66, t: 5.4 }
+  ];
+
+  harpArpeggio.forEach(h => {
+    playHarpNote(h.freq, now + h.t, 1.8, 0.15);
+  });
+
+  sequence.forEach(item => {
+    playHarpNote(item.freq, now + item.t, item.d, 0.35);
+  });
+}
+
+function triggerHaptic(type) {
+  if ('vibrate' in navigator) {
+    if (type === 'stroke') navigator.vibrate(8);
+    if (type === 'reply') navigator.vibrate([20, 50, 20]);
+  }
+}
+
+// =========================================
+// 🎵 寫字時背景配樂 — 典雅古典豎琴
+// =========================================
+let bgMusicPlaying = false;
+let bgmHarpLoopTimer = null;
+
+const harpChords = [
+  [123.47, 185.00, 246.94, 293.66, 369.99, 493.88],
+  [146.83, 220.00, 293.66, 369.99, 440.00, 587.33],
+  [196.00, 246.94, 293.66, 392.00, 493.88, 587.33],
+  [164.81, 220.00, 277.18, 329.63, 440.00, 554.37]
+];
+let chordIndex = 0;
+
+function startBackgroundMusic() {
+  if (bgMusicPlaying || !audioCtx) return;
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off') return;
+
+  bgMusicPlaying = true;
+  updateBgmButtonsUI();
+
+  function triggerNextHarpPhrase() {
+    if (!bgMusicPlaying || !audioCtx) return;
+    const now = audioCtx.currentTime;
+    const chord = harpChords[chordIndex % harpChords.length];
+    chordIndex++;
+
+    chord.forEach((freq, idx) => {
+      const noteDelay = now + idx * 0.18 + Math.random() * 0.03;
+      playHarpNote(freq, noteDelay, 2.8, 0.12 + (idx % 2) * 0.04);
+    });
+
+    bgmHarpLoopTimer = setTimeout(triggerNextHarpPhrase, 4500);
+  }
+
+  triggerNextHarpPhrase();
+}
+
+function stopBackgroundMusic() {
+  if (bgmHarpLoopTimer) { clearTimeout(bgmHarpLoopTimer); bgmHarpLoopTimer = null; }
+  bgMusicPlaying = false;
+  updateBgmButtonsUI();
+}
+
+function toggleBGM() {
+  if (bgMusicPlaying) stopBackgroundMusic(); else { initAudio(); startBackgroundMusic(); }
+}
+
+function updateBgmButtonsUI() {
+  const btn = $('bgmBtn'); const topBtn = $('topBgmBtn');
+  if (bgMusicPlaying) {
+    if (btn) { btn.innerHTML = '⏸ 暫停配樂'; btn.style.background = 'rgba(163,137,108,0.15)'; btn.style.borderColor = '#a3896c'; }
+    if (topBtn) { topBtn.style.background = 'rgba(139,115,85,0.45)'; topBtn.style.borderColor = '#6d5036'; }
+  } else {
+    if (btn) { btn.innerHTML = '▶ 播放古典豎琴配樂'; btn.style.background = '#fffdf9'; btn.style.borderColor = 'rgba(212,197,176,0.6)'; }
+    if (topBtn) { topBtn.style.background = 'rgba(255, 250, 240, 0.3)'; topBtn.style.borderColor = 'rgba(139,115,85,0.25)'; }
+  }
+}
+
+// =========================================
+// 📜 動態歲月紙張
+// =========================================
+function updatePaperAging() {
+  const count = parseInt(localStorage.getItem('riddle_chat_count') || '0', 10);
+  const maxAging = Math.min(count, 15);
+  document.documentElement.style.setProperty('--sepia-level', (maxAging * 2) + '%');
+  document.documentElement.style.setProperty('--vignette-alpha', 0.4 + (maxAging * 0.02));
+}
+
+// =========================================
+// 流程總控：頁面初始化
+// =========================================
+let appState = 'INIT';
+
+window.onload = () => {
+  updatePaperAging();
+  let sid = localStorage.getItem('riddle_session');
+  if (!sid) { sid = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36); localStorage.setItem('riddle_session', sid); }
+  if (localStorage.getItem('riddle_visited') === 'true') { $('intro-layer').style.display = 'none'; $('tut-layer').style.display = 'none'; startMainDiary(); } 
+  else { startIntroAnimation(); }
+};
+
+// =========================================
+// PART 1: 儲思盆開場過場
+// =========================================
+function startIntroAnimation() {
+  appState = 'INTRO';
+  setTimeout(() => { $('step1').classList.add('active'); }, 600);
+  setTimeout(() => { $('step1').classList.remove('active'); $('step1').classList.add('exit'); }, 2800);
+  setTimeout(() => { $('step2').classList.add('active'); }, 4000);
+  setTimeout(() => { $('step3').classList.add('show'); }, 6200);
+}
+
+function enterFromIntro() {
+  initAudio();
+  
+  playIntroSwanLakeTheme(); 
+  setTimeout(() => { startBackgroundMusic(); }, 3000);
+
+  const intro = $('intro-layer');
+  const runes = intro.querySelectorAll('.rune-ring');
+  runes.forEach(r => {
+    r.style.transition = 'all 2.5s cubic-bezier(0.25, 1, 0.5, 1)';
+    r.style.transform = 'translate(-50%, -50%) scale(1.8) rotate(180deg)';
+    r.style.opacity = '0'; r.style.filter = 'blur(12px)';
+  });
+
+  const texts = intro.querySelectorAll('.intro-text-layer, .enter-btn, .disclaimer');
+  texts.forEach(t => {
+    t.style.transition = 'all 1.8s ease-in';
+    t.style.transform = 'scale(1.05) translateY(-40px)';
+    t.style.opacity = '0'; t.style.filter = 'blur(15px)';
+  });
+
+  intro.style.transition = 'opacity 2.5s ease-in-out';
+  intro.style.opacity = '0';
+  
+  setTimeout(() => { 
+    intro.style.display = 'none'; 
+    startTutorialAnimation();
+  }, 2400);
+}
+
+// =========================================
+// PART 2: 1000x1600 教學
+// =========================================
+const V_WIDTH = 1000, V_HEIGHT = 1600;
+const tutCanvas = $('tut-canvas'); const tutCtx = tutCanvas.getContext('2d');
+let tutAnimFrame = null;
+
+const strokePaths = [
+  [ {x1:380,y1:520,cx:330,cy:600,x2:280,y2:700,w:9}, {x1:335,y1:610,cx:335,cy:720,x2:335,y2:830,w:10}, {x1:430,y1:540,cx:580,cy:530,x2:600,y2:570,w:8}, {x1:510,y1:540,cx:510,cy:720,x2:480,y2:820,w:10}, {x1:490,y1:660,cx:440,cy:720,x2:400,y2:770,w:8}, {x1:540,y1:660,cx:590,cy:720,x2:620,y2:760,w:8} ],
+  [ {x1:360,y1:920,cx:330,cy:1000,x2:380,y2:1070,w:8}, {x1:380,y1:1070,cx:320,cy:1100,x2:440,y2:1080,w:7}, {x1:310,y1:1010,cx:400,cy:1000,x2:470,y2:990,w:9}, {x1:530,y1:910,cx:580,cy:910,x2:580,y2:1000,w:8}, {x1:580,y1:1000,cx:540,cy:1080,x2:570,y2:1120,w:10}, {x1:480,y1:1010,cx:570,cy:1010,x2:650,y2:1010,w:9} ]
+];
+let curStrokeGroup = 0, curCurveIdx = 0, tutProgress = 0;
+
+function startTutorialAnimation() {
+  appState = 'TUTORIAL'; $('tut-layer').style.display = 'flex';
+  const w = window.innerWidth, h = window.innerHeight; const scale = Math.min(w/V_WIDTH, h/V_HEIGHT);
+  const stage = $('tut-canvas-stage');
+  stage.style.width = (V_WIDTH*scale)+'px'; stage.style.height = (V_HEIGHT*scale)+'px';
+  tutCanvas.width = V_WIDTH*scale; tutCanvas.height = V_HEIGHT*scale;
+  tutCtx.scale(scale, scale); tutCtx.lineCap = 'round'; tutCtx.lineJoin = 'round';
+  showTutTip('✨ 示範：在紙上寫字...');
+  setTimeout(() => { tutAnimFrame = requestAnimationFrame(drawTutStep); }, 800);
+}
+
+function showTutTip(text) {
+  const tip = $('tut-tip'); tip.classList.remove('show');
+  setTimeout(() => { tip.textContent = text; tip.classList.add('show'); }, 400);
+}
+
+function getBezier(t, p0, p1, p2) {
+  const oneT = 1-t; return { x: oneT*oneT*p0.x + 2*oneT*t*p1.x + t*t*p2.x, y: oneT*oneT*p0.y + 2*oneT*t*p1.y + t*t*p2.y };
+}
+
+function drawTutStep() {
+  if(appState !== 'TUTORIAL') return;
+  const group = strokePaths[curStrokeGroup];
+  if(!group) { setTimeout(tutFadeInk, 1000); return; }
+  const curve = group[curCurveIdx];
+  if(!curve) { curStrokeGroup++; curCurveIdx=0; setTimeout(()=>{tutAnimFrame=requestAnimationFrame(drawTutStep);}, 250); return; }
+
+  tutProgress += 0.07; if(tutProgress>1) tutProgress=1;
+  const prevT = Math.max(0, tutProgress-0.07);
+  const p1 = getBezier(prevT, {x:curve.x1,y:curve.y1}, {x:curve.cx,y:curve.cy}, {x:curve.x2,y:curve.y2});
+  const p2 = getBezier(tutProgress, {x:curve.x1,y:curve.y1}, {x:curve.cx,y:curve.cy}, {x:curve.x2,y:curve.y2});
+
+  tutCtx.beginPath(); tutCtx.strokeStyle='#1a120c'; tutCtx.lineWidth=curve.w;
+  tutCtx.moveTo(p1.x,p1.y); tutCtx.lineTo(p2.x,p2.y); tutCtx.stroke();
+  playPenSound(p2);
+
+  if(tutProgress>=1) { tutProgress=0; curCurveIdx++; }
+  tutAnimFrame = requestAnimationFrame(drawTutStep);
+}
+
+function tutFadeInk() {
+  showTutTip('💧 停筆後，墨水會滲入紙張...');
+  let a = 1;
+  function fade() {
+    a -= 0.025;
+    if(a<=0) { tutCtx.clearRect(0,0,V_WIDTH,V_HEIGHT); tutShowReply(); return; }
+    tutCanvas.style.opacity = a; tutCanvas.style.filter = `blur(${(1-a)*4}px) contrast(${100+(1-a)*30}%)`;
+    requestAnimationFrame(fade);
+  }
+  setTimeout(fade, 800);
+}
+
+function tutShowReply() {
+  showTutTip('📖 日記會浮現文字回應你！');
+  playMagicChime(); $('tut-reply').classList.add('show');
+  setTimeout(() => { showTutTip('✨ 教學完成！'); $('skip-btn').textContent = '進入日記 ➔'; }, 3500);
+}
+
+function skipTutorial() {
+  if(tutAnimFrame) cancelAnimationFrame(tutAnimFrame);
+  localStorage.setItem('riddle_visited', 'true');
+  $('tut-layer').style.opacity = '0';
+  setTimeout(() => { $('tut-layer').style.display = 'none'; startMainDiary(); }, 1500);
+}
+
+// =========================================
+// PART 3: 主日記本邏輯
+// =========================================
+const mainCanvas = $('main-canvas'); const mainCtx = mainCanvas.getContext('2d');
+let mainDrawing=false, mainIdle=null, mainHasWritten=false, querying=false;
+let allStrokes=[], cur=[], activeTouchId=null;
+
+function startMainDiary() {
+  appState = 'MAIN'; $('main-layer').classList.add('active');
+  let resizePending = false;
+  window.addEventListener('resize', () => { if (mainDrawing) { resizePending = true; return; } resizeMain(); });
+  resizeMain();
+  mainCanvas.addEventListener('touchstart', startMainDraw, {passive:false}); mainCanvas.addEventListener('touchmove', moveMainDraw, {passive:false});
+  mainCanvas.addEventListener('touchend', endMainDraw, {passive:false}); mainCanvas.addEventListener('touchcancel', endMainDraw, {passive:false});
+  mainCanvas.addEventListener('mousedown', startMainDraw); mainCanvas.addEventListener('mousemove', moveMainDraw); mainCanvas.addEventListener('mouseup', endMainDraw);
+
+  const saved = getSafeStorage('riddle-cfg', {});
+  $('workerUrl').value = saved.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat';
+  $('apiKey').value = saved.apiKey || ''; $('fontStyle').value = saved.fontStyle || 'ma'; $('audioToggle').value = saved.audioToggle || 'on';
+}
+
+function saveSettings() {
+  const cfg = { workerUrl: $('workerUrl').value.trim() || 'https://riddle-notebook.seeaann10.workers.dev/api/chat', apiKey: $('apiKey').value.trim(), fontStyle: $('fontStyle').value, audioToggle: $('audioToggle').value };
+  localStorage.setItem('riddle-cfg', JSON.stringify(cfg)); $('settings').classList.add('hidden');
+}
+function resizeMain(){ mainCanvas.width = window.innerWidth; mainCanvas.height = window.innerHeight; mainCtx.lineJoin = 'round'; mainCtx.lineCap = 'round'; redrawMain(); }
+
+const MAX_LINE_WIDTH = 5.0; const MIN_LINE_WIDTH = 1.8;
+let smoothedPressure = 0.5; const PRESSURE_SMOOTH_ALPHA = 0.2;
+
+function clampPressure(rawForce) {
+  let clamped = (rawForce !== undefined && rawForce > 0) ? rawForce : 0.5;
+  clamped = Math.min(0.8, Math.max(0.2, clamped));
+  smoothedPressure = PRESSURE_SMOOTH_ALPHA * clamped + (1 - PRESSURE_SMOOTH_ALPHA) * smoothedPressure; return smoothedPressure;
+}
+function pressureToLineWidth(p) { return Math.min(MAX_LINE_WIDTH, Math.max(MIN_LINE_WIDTH, MIN_LINE_WIDTH + Math.pow(p || 0.5, 0.7) * 3.0)); }
+function mPos(e, touchTarget){ const t = touchTarget || (e.touches ? e.touches[0] : e); return {x: t.clientX, y: t.clientY, p: clampPressure(t.force)}; }
+
+function startMainDraw(e){
+  if(appState !== 'MAIN') return;
+  e.preventDefault(); if(querying) return; initAudio();
+  let tTarget = null; if (e.touches) { tTarget = e.changedTouches[0]; activeTouchId = tTarget.identifier; }
+  
+  mainDrawing = true; smoothedPressure = 0.5; const pos = mPos(e, tTarget); cur = [pos]; clearTimeout(mainIdle); 
+  
+  const layer = $('reply-layer'); layer.style.transition = 'none'; layer.style.opacity = '1'; layer.style.filter = 'none'; layer.innerHTML = '';
+  mainCtx.beginPath(); mainCtx.fillStyle = '#1a120c'; mainCtx.arc(pos.x, pos.y, pressureToLineWidth(pos.p) * 0.6, 0, Math.PI * 2); mainCtx.fill();
+  triggerHaptic('stroke'); lastDrawPos = pos; playPenSound(pos);
+}
+
+function moveMainDraw(e){
+  e.preventDefault(); if(!mainDrawing) return;
+  let tTarget = null;
+  if (e.touches) { for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === activeTouchId) { tTarget = e.changedTouches[i]; break; } } if (!tTarget) return; }
+  const p = mPos(e, tTarget); cur.push(p); if(cur.length<2) return;
+  const a=cur[cur.length-2], b=cur[cur.length-1];
+  mainCtx.beginPath(); mainCtx.strokeStyle='#1a120c'; mainCtx.lineWidth=pressureToLineWidth(b.p);
+  mainCtx.moveTo(a.x,a.y); mainCtx.lineTo(b.x,b.y); mainCtx.stroke();
+  playPenSound(b);
+}
+
+function endMainDraw(e){
+  if(e) e.preventDefault(); if(!mainDrawing) return;
+  if (e && e.touches) { let released = false; for (let i = 0; i < e.changedTouches.length; i++) { if (e.changedTouches[i].identifier === activeTouchId) released = true; } if (!released) return; }
+  mainDrawing = false; activeTouchId = null; lastDrawPos = null;
+  if(cur.length > 2){ allStrokes.push(cur.slice()); mainHasWritten = true; } cur = []; clearTimeout(mainIdle);
+  if (typeof resizePending !== 'undefined' && resizePending) { resizePending = false; resizeMain(); }
+  mainIdle = setTimeout(()=>{ if(mainHasWritten && allStrokes.length) mainCommit(); }, 1800);
+}
+
+function redrawMain(){
+  mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height);
+  allStrokes.forEach(s=>{
+    if(s.length<2) return;
+    for(let i=1;i<s.length;i++){
+      mainCtx.beginPath(); mainCtx.strokeStyle='#1a120c'; mainCtx.lineWidth=pressureToLineWidth(s[i].p);
+      mainCtx.moveTo(s[i-1].x,s[i-1].y); mainCtx.lineTo(s[i].x,s[i].y); mainCtx.stroke();
+    }
+  });
+}
+
+function fadeMainInk(){
+  return new Promise(res => {
+    let a = 1;
+    function step(){
+      a -= 0.03;
+      if(a <= 0){ mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height); mainCanvas.style.filter = ''; res(); return; }
+      mainCtx.save(); mainCtx.globalAlpha = a; mainCtx.clearRect(0, 0, mainCanvas.width, mainCanvas.height); redrawMain(); mainCtx.restore();
+      const blurVal = (1 - a) * 3.5; mainCanvas.style.filter = `blur(${blurVal}px) contrast(${100 + (1-a)*40}%)`;
+      requestAnimationFrame(step);
+    } requestAnimationFrame(step);
+  });
+}
+
+function clearMainPage(){ 
+  allStrokes=[]; mainHasWritten=false; mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height); 
+  const layer = $('reply-layer'); layer.style.transition = 'none'; layer.style.opacity = '1'; layer.style.filter = 'none'; layer.innerHTML = ''; 
+  clearTimeout(mainIdle); 
+}
+
+function mainShowStatus(m){ const s=$('status'); s.textContent=m; s.classList.add('show'); }
+function mainHideStatus(){ $('status').classList.remove('show'); }
+
+function mainAnimateReply(text){
+  return new Promise(res=>{
+    triggerHaptic('reply');
+    const layer = $('reply-layer'); layer.style.transition = 'none'; layer.style.opacity = '1'; layer.style.filter = 'none'; layer.innerHTML = '';
+    const cfg = getSafeStorage('riddle-cfg', {}); let html='';
+    for(let i=0; i<text.length; i++){
+      let ch=text[i]; if(ch==='\n'){ html+='<br>'; continue; } if(ch===' '){ html+='&nbsp;'; continue; }
+      const rot = (Math.random() - 0.5) * 3; const ty = (Math.random() - 0.5) * 2;
+      html+=`<span class="reply-char" data-font="${cfg.fontStyle||'ma'}" style="--rot:${rot}deg;--ty:${ty}px">${ch}</span>`;
+    }
+    layer.innerHTML=html;
+    const spans=layer.querySelectorAll('.reply-char'); let idx=0;
+    function next(){
+      if(idx>=spans.length){ playMagicChime(); res(); return; }
+      spans[idx].classList.add('show'); playCharSound(); idx++;
+      setTimeout(next, /[\u4e00-\u9fff]/.test(spans[idx-1].textContent) ? 120 + Math.random()*30 : 60 + Math.random()*40);
+    } next();
+  });
+}
+
+function mainCommit(){
+  if(querying) return;
+  if (!allStrokes.length || allStrokes.every(s => s.length <= 2)) { clearMainPage(); return; }
+  querying = true;
+  const apiCv=document.createElement('canvas'); const sc=Math.min(1, 512/Math.max(mainCanvas.width, mainCanvas.height));
+  apiCv.width=Math.round(mainCanvas.width*sc); apiCv.height=Math.round(mainCanvas.height*sc);
+  const actx=apiCv.getContext('2d'); actx.fillStyle='#f5f0e8'; actx.fillRect(0,0,apiCv.width,apiCv.height);
+  actx.drawImage(mainCanvas,0,0,apiCv.width,apiCv.height);
+  const b64=apiCv.toDataURL('image/jpeg',0.6).split(',')[1]; apiCv.width = 0; apiCv.height = 0;
+
+  fadeMainInk().then(()=>{ allStrokes=[]; mainHasWritten=false; });
+  mainShowStatus('墨水緩緩下沉...');
+
+  const cfg = getSafeStorage('riddle-cfg', {});
+  const workerUrl = cfg.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat';
+  const sid = localStorage.getItem('riddle_session');
+  const controller = new AbortController(); const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  fetch(workerUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ session_id: sid, image_b64: b64, user_api_key: cfg.apiKey || '' }) })
+  .then(r => { clearTimeout(timeoutId); if(r.status === 429) throw new Error('429'); if(!r.ok) return r.text().then(t => { throw new Error('API '+r.status+': '+t.slice(0,50)); }); return r.json(); })
+  .then(d => {
+    if (d.error) throw new Error(d.error);
+    localStorage.setItem('riddle_chat_count', (parseInt(localStorage.getItem('riddle_chat_count') || '0', 10) + 1).toString()); updatePaperAging();
+    mainHideStatus(); return mainAnimateReply(d.reply || '日記靜悄悄的，沒有回應。');
+  })
+  .then(() => {
+    setTimeout(() => {
+      const layer = $('reply-layer'); layer.style.transition = 'opacity 3s ease-out, filter 3s ease-out';
+      layer.style.opacity = '0'; layer.style.filter = 'blur(4px)'; setTimeout(() => { layer.innerHTML = ''; }, 3200);
+    }, 9000);
+  })
+  .catch(e => {
+    clearTimeout(timeoutId); mainHideStatus();
+    if(e.name === 'AbortError') { mainAnimateReply('魔法傳輸超時，請檢查您的網路連線。'); } 
+    else if(e.message === '429') { mainAnimateReply('墨水暫時耗盡... 請稍後再試，或點擊右上角 ⚙️ 輸入您的 Groq Key。'); } 
+    else { mainAnimateReply('日記發出了奇怪的聲音... ' + e.message.slice(0,30)); }
+  })
+  .finally(() => { querying=false; });
+}
+
+let isHistoryLoading = false;
+function showHistory() {
+  if (isHistoryLoading) return; isHistoryLoading = true;
+  const list = $('history-list'); list.innerHTML = '<p style="text-align:center;color:#999;padding:20px">正在翻開記憶...</p>';
+  $('history-overlay').classList.remove('hidden');
+  const sid = localStorage.getItem('riddle_session'); const cfg = getSafeStorage('riddle-cfg', {});
+  const fetchUrl = (cfg.workerUrl || 'https://riddle-notebook.seeaann10.workers.dev/api/chat').replace(/\/chat$/, '/history') + '?session_id=' + sid + '&_t=' + Date.now();
+
+  fetch(fetchUrl)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.conversations || !d.conversations.length) { list.innerHTML = '<p style="text-align:center;color:#999;padding:30px">書頁上還沒有任何記憶...</p>'; return; }
+      list.innerHTML = d.conversations.map(m => {
+        const date = new Date(m.created_at); const ds = (date.getMonth()+1)+'/'+date.getDate()+' '+date.getHours()+':'+String(date.getMinutes()).padStart(2,'0');
+        return `<div class="mem-item"><div class="mem-body"><div class="mem-date">${ds}</div><div class="mem-user">✏️ ${esc(m.user_text)}</div><div class="mem-reply">${esc(m.ai_reply)}</div></div></div>`;
+      }).join('');
+    })
+    .catch(() => { list.innerHTML = '<p style="text-align:center;color:#999;padding:30px">記憶有些模糊，暫時無法讀取。</p>'; })
+    .finally(() => { isHistoryLoading = false; });
+}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
