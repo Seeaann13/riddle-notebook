@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>魔法日記</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Liu+Jian+Mao+Cao&family=Long+Cang&family=Noto+Serif+TC:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  /* =========================================
+     1. 全局共用與動態歲月紙張 (Dynamic Aging)
+     ========================================= */
+  :root {
+    --sepia-level: 0%;
+    --vignette-alpha: 0.5;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { 
+    background-color: #d8cdb8; font-family: 'Noto Serif TC', serif; 
+    overflow: hidden; height: 100dvh; width: 100vw; touch-action: none; 
+    filter: sepia(var(--sepia-level));
+    transition: filter 2s ease;
+    background-image: 
+      radial-gradient(circle at center, transparent 20%, rgba(50, 30, 15, var(--vignette-alpha)) 150%),
+      url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.07'/%3E%3C/svg%3E");
+  }
+
+  /* =========================================
+     2. 開場動畫層 (Intro Layer)
+     ========================================= */
+  #intro-layer {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 3000;
+    background: radial-gradient(circle at center, #2a1e15 0%, #050403 100%);
+    transition: opacity 1.5s ease, filter 1.5s ease, transform 1.5s ease;
+  }
+  .magic-core {
+    position: absolute; width: 40vw; height: 40vw; border-radius: 50%;
+    background: radial-gradient(circle, rgba(200, 150, 80, 0.15) 0%, transparent 60%);
+    filter: blur(20px); z-index: 1; opacity: 0; animation: corePulse 6s infinite alternate ease-in-out;
+  }
+  @keyframes corePulse { 0% { transform: scale(0.8); opacity: 0.2; } 100% { transform: scale(1.5); opacity: 0.6; } }
+  .particles { position: absolute; inset: 0; pointer-events: none; z-index: 0; }
+  .particle {
+    position: absolute; border-radius: 50%; background: rgba(255, 230, 180, 0.9);
+    box-shadow: 0 0 15px rgba(255, 210, 120, 0.8), 0 0 30px rgba(255, 200, 100, 0.4);
+    opacity: 0; animation: floatUp var(--duration) infinite ease-in; animation-delay: var(--delay);
+    left: var(--left); width: var(--size); height: var(--size);
+  }
+  @keyframes floatUp {
+    0% { transform: translateY(100vh) scale(0.2); opacity: 0; filter: blur(2px); }
+    30% { opacity: 1; filter: blur(0px); transform: translateY(50vh) scale(1.2); }
+    70% { opacity: 0.8; }
+    100% { transform: translateY(-20vh) scale(0.5); opacity: 0; filter: blur(4px); }
+  }
+  .intro-text-layer {
+    position: absolute; text-align: center; z-index: 10;
+    opacity: 0; filter: blur(12px); transform: scale(0.95);
+    transition: opacity 1.5s ease, filter 1.5s ease, transform 2s ease-out; pointer-events: none;
+  }
+  .intro-text-layer.active { opacity: 1; filter: blur(0px); transform: scale(1); }
+  .intro-text-layer.exit { opacity: 0; filter: blur(10px); transform: scale(1.05); }
+  .disclaimer { font-size: 13px; letter-spacing: 2px; color: #bcaaa4; line-height: 2; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+  .disclaimer span { color: #8d7b73; font-size: 11px; }
+  .intro-title { font-family: 'Cinzel', serif; font-size: 42px; color: #fff9e6; text-shadow: 0 0 20px rgba(255,230,180,0.6); letter-spacing: 4px; }
+  .intro-subtitle { font-size: 14px; margin-top: 16px; letter-spacing: 12px; color: #d4c5b0; margin-right: -12px; }
+  .enter-btn {
+    position: absolute; bottom: 15%; opacity: 0; z-index: 20; font-size: 12px; letter-spacing: 6px; cursor: pointer;
+    border: 1px solid rgba(255,230,180,0.4); padding: 12px 36px; border-radius: 30px; 
+    background: rgba(20, 15, 10, 0.6); color: #fff9e6; transition: opacity 1.5s ease, transform 0.3s;
+    animation: pulseBtn 2s infinite alternate ease-in-out; pointer-events: none;
+  }
+  .enter-btn.show { opacity: 1; pointer-events: auto; }
+  .enter-btn:active { transform: scale(0.95); background: rgba(255,230,180,0.2); }
+  @keyframes pulseBtn { 0% { box-shadow: 0 0 10px rgba(255,210,120,0.1); } 100% { box-shadow: 0 0 25px rgba(255,210,120,0.4); text-shadow: 0 0 10px rgba(255,255,255,0.8); } }
+
+  /* =========================================
+     3. 教學層 (Tutorial Layer - 1000x1600 Stage)
+     ========================================= */
+  #tut-layer {
+    position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center;
+    background: transparent; transition: opacity 1s ease;
+  }
+  #tut-canvas-stage { position: relative; z-index: 1; }
+  #tut-canvas { display: block; mix-blend-mode: multiply; }
+  #tut-tip {
+    position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+    background: rgba(40, 25, 15, 0.88); color: #efe7d6; padding: 10px 24px; border-radius: 30px; 
+    font-size: 15px; letter-spacing: 1.5px; z-index: 20; pointer-events: none;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.15);
+    transition: all 0.5s ease; opacity: 0;
+  }
+  #tut-tip.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  #skip-btn {
+    position: fixed; top: 20px; right: 20px; z-index: 30; background: rgba(30, 20, 10, 0.6); color: #d4c5b0;
+    border: 1px solid rgba(212,197,176,0.3); padding: 8px 18px; border-radius: 20px; font-size: 13px;
+    letter-spacing: 1px; cursor: pointer; backdrop-filter: blur(8px); transition: all 0.2s;
+  }
+  #skip-btn:active { transform: scale(0.92); background: rgba(212,197,176,0.2); }
+  #tut-reply {
+    position: absolute; top: 40%; left: 10%; right: 10%; text-align: center; font-family: 'Ma Shan Zheng', serif;
+    font-size: 38px; color: #1a120c; mix-blend-mode: multiply; text-shadow: 0 0 2px rgba(26,18,12,0.4);
+    opacity: 0; filter: blur(10px); transition: all 1.2s ease-out; pointer-events: none; z-index: 10;
+  }
+  #tut-reply.show { opacity: 0.95; filter: blur(0px); }
+
+  /* =========================================
+     4. 主日記本層 (Main Diary Layer)
+     ========================================= */
+  #main-layer { position: fixed; inset: 0; z-index: 1000; opacity: 0; transition: opacity 1s ease; pointer-events: none; }
+  #main-layer.active { opacity: 1; pointer-events: auto; }
+  
+  .candlelight { position: absolute; inset: 0; pointer-events: none; z-index: 0; 
+    background: radial-gradient(circle at 50% 30%, rgba(220, 140, 50, 0.06) 0%, transparent 60%); 
+    animation: flicker 4s infinite alternate ease-in-out; 
+  }
+  .red-line { position: absolute; top: 0; bottom: 0; left: 52px; width: 1.5px; background: rgba(180, 80, 80, 0.2); pointer-events: none; z-index: 0; }
+  @keyframes flicker { 0% { opacity: 0.6; transform: scale(0.98); } 100% { opacity: 1; transform: scale(1.02); } }
+
+  #main-canvas { position: absolute; inset: 0; z-index: 1; mix-blend-mode: multiply; }
+  
+  .top-btns { position: fixed; top: 16px; right: 16px; z-index: 20; display: flex; gap: 12px; }
+  .btn-circle { width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, 0.3); border: 1px solid rgba(139,115,85,0.25); font-size: 18px; cursor: pointer; backdrop-filter: blur(6px); color: #4a3424; transition: all 0.2s; }
+  .btn-circle:active { transform: scale(0.92); }
+
+  #reply-layer { position: absolute; top: 15%; left: 70px; right: 25px; bottom: 80px; z-index: 2; pointer-events: none; overflow: hidden; word-break: break-all; }
+  .reply-char { display: inline; color: #1a120c; font-size: 34px; line-height: 1.8; mix-blend-mode: multiply; text-shadow: 0px 0px 2px rgba(26,18,12,0.4); opacity: 0; filter: blur(8px); transform: scale(0.95); transition: opacity 0.8s ease, filter 0.8s ease-out, transform 0.8s ease-out; }
+  .reply-char.show { opacity: 0.92; filter: blur(0px); transform: scale(1); }
+  .reply-char[data-font="ma"] { font-family: 'Ma Shan Zheng', serif; }
+  .reply-char[data-font="zhi"] { font-family: 'Zhi Mang Xing', serif; }
+  .reply-char[data-font="liu"] { font-family: 'Liu Jian Mao Cao', serif; }
+  .reply-char[data-font="long"] { font-family: 'Long Cang', serif; }
+  
+  #status { position: fixed; bottom: 35px; left: 50%; transform: translateX(-50%) translateY(10px); background: rgba(40, 25, 15, 0.85); color: #efe7d6; padding: 10px 24px; border-radius: 30px; font-size: 14px; letter-spacing: 1px; z-index: 10; pointer-events: none; opacity: 0; transition: all 0.4s; }
+  #status.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* 設定與歷史視窗 - 解鎖 iOS 滾動 (touch-action: pan-y) */
+  .overlay { position: fixed; inset: 0; background: rgba(20, 15, 10, 0.5); display: flex; align-items: center; justify-content: center; z-index: 4000; backdrop-filter: blur(8px); transition: opacity 0.3s; touch-action: pan-y; }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .card { background: rgba(250, 245, 235, 0.95); border: 1px solid rgba(139,115,85,0.3); border-radius: 20px; padding: 28px 24px; max-width: 350px; width: 100%; box-shadow: 0 25px 60px rgba(0,0,0,0.3); transition: transform 0.4s; touch-action: pan-y; }
+  .overlay.hidden .card { transform: translateY(40px); }
+  .card h2 { font-size: 22px; margin-bottom: 4px; text-align: center; color: #3d2a1b; letter-spacing: 1.5px; }
+  .card .sub { text-align: center; font-size: 12px; color: #8b7355; margin-bottom: 20px; }
+  .card label { display: block; font-size: 12px; color: #5c4b3a; margin: 14px 0 4px; font-weight: bold; }
+  .card input, .card select { width: 100%; padding: 10px 14px; border: 1.5px solid #d4c5b0; border-radius: 10px; font-size: 14px; background: #fffcf5; outline: none; transition: all .2s; }
+  .card input:focus, .card select:focus { border-color: #8b7355; background: #fff; box-shadow: 0 0 0 3px rgba(139,115,85,0.15); }
+  .card .hint { font-size: 11px; color: #9a8a75; margin-top: 4px; line-height: 1.4; }
+  .card .row { display: flex; gap: 10px; margin-top: 24px; }
+  .card .row button { flex: 1; padding: 12px; border-radius: 10px; font-size: 14px; font-weight: bold; border: none; cursor: pointer; }
+  .card .row .secondary { background: #e3d8c8; color: #5c4b3a; }
+  .card .row .primary { background: linear-gradient(135deg, #6d5036, #4a3424); color: #fff; box-shadow: 0 4px 15px rgba(74,52,36,0.4); }
+
+  /* 歷史紀錄彈窗 - 多行換行與 iOS 滾動優化 */
+  #history-sheet { background: #fbf6ec; width: 100%; max-width: 480px; max-height: 75dvh; border-radius: 20px; padding: 20px; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; box-shadow: 0 25px 60px rgba(0,0,0,0.4); }
+  #history-sheet h3 { font-size: 18px; margin-bottom: 16px; color: #3d2a1b; text-align: center; }
+  .mem-item { padding: 12px 0; border-bottom: 1px dashed #d4c5b0; display: flex; gap: 12px; align-items: flex-start; }
+  .mem-item:last-child { border: none; }
+  .mem-body { flex: 1; min-width: 0; }
+  .mem-date { font-size: 11px; color: #a39581; margin-bottom: 4px; }
+  .mem-user { font-size: 12px; color: #5c4b3a; margin-bottom: 4px; background: rgba(139,115,85,0.1); padding: 4px 8px; border-radius: 6px; display: inline-block; word-break: break-all; }
+  .mem-reply { font-size: 15px; color: #2c1e16; font-family: 'Georgia', serif; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }
+</style>
+</head>
+<body>
+
+<div id="intro-layer">
+  <div class="magic-core"></div>
+  <div class="particles">
+    <div class="particle" style="--size: 4px; --left: 20%; --delay: 0s; --duration: 6s;"></div>
+    <div class="particle" style="--size: 6px; --left: 55%; --delay: 1.5s; --duration: 7s;"></div>
+    <div class="particle" style="--size: 3px; --left: 80%; --delay: 0.5s; --duration: 5s;"></div>
+    <div class="particle" style="--size: 5px; --left: 35%; --delay: 2.5s; --duration: 6.5s;"></div>
+    <div class="particle" style="--size: 4px; --left: 70%; --delay: 2s; --duration: 8s;"></div>
+  </div>
+  <div id="step1" class="intro-text-layer disclaimer">This is a Fan-Made Project.<br>本專案為技術展示與粉絲創作<br><span>與 J.K. Rowling 及 Warner Bros. 無官方關聯</span></div>
+  <div id="step2" class="intro-text-layer"><div class="intro-title">Tom Riddle's Diary</div><div class="intro-subtitle">魔 法 日 記</div></div>
+  <div id="step3" class="enter-btn" onclick="enterFromIntro()">觸碰以開啟</div>
+</div>
+
+<div id="tut-layer" style="display:none;">
+  <div id="tut-tip">✨ 示範：在紙上寫字...</div>
+  <button id="skip-btn" onclick="skipTutorial()">跳過教學 ✕</button>
+  <div id="tut-canvas-stage">
+    <canvas id="tut-canvas"></canvas>
+    <div id="tut-reply">「試著寫下你的祕密...」</div>
+  </div>
+</div>
+
+<div id="main-layer">
+  <div class="candlelight"></div>
+  <div class="red-line"></div>
+  <canvas id="main-canvas"></canvas>
+  <div id="reply-layer"></div>
+  
+  <div class="top-btns">
+    <button class="btn-circle" onclick="showHistory()" title="歷史記憶">📖</button>
+    <button class="btn-circle" onclick="clearMainPage()" title="清除畫布">🗑️</button>
+    <button class="btn-circle" onclick="$('settings').classList.remove('hidden')" title="日記設定">⚙️</button>
+  </div>
+  
+  <div id="status"></div>
+
+  <div class="overlay hidden" id="history-overlay">
+    <div id="history-sheet">
+      <h3>📖 殘留的記憶</h3>
+      <div id="history-list"></div>
+      <div class="row" style="margin-top:20px">
+        <button class="secondary" style="width:100%; padding:12px; border-radius:10px; border:none; background:#e3d8c8; font-weight:bold; cursor:pointer;" onclick="$('history-overlay').classList.add('hidden')">關閉記憶</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="settings">
+    <div class="card">
+      <h2>🪄 魔法日記</h2>
+      <div class="sub">設定與備用 API</div>
+      <label>後端 Worker API 網址</label>
+      <input type="text" id="workerUrl" placeholder="/api/chat 或完整網址" autocomplete="off">
+      <div class="hint">預設直接呼叫 `/api/chat`</div>
+      
+      <label>自備 Groq API Key (選填)</label>
+      <input type="password" id="apiKey" placeholder="伺服器滿載時將自動改用您的 Key" autocomplete="off">
+      <div class="hint">可自 <a href="https://console.groq.com/keys" target="_blank" style="color:#8b7355;">Groq Console</a> 免費獲取。</div>
+      
+      <label>浮現字體</label>
+      <select id="fontStyle">
+        <option value="ma">馬善政（行書）</option><option value="zhi">指芒果行（行草）</option>
+        <option value="liu">劉建茅草（草書）</option><option value="long">龍藏（手寫）</option>
+      </select>
+      
+      <label>聲音與震動特效</label>
+      <select id="audioToggle">
+        <option value="on">開啟（沙沙聲 + 魔法嗡鳴）</option>
+        <option value="off">靜音模式</option>
+      </select>
+
+      <div class="row">
+        <button class="secondary" onclick="$('settings').classList.add('hidden')">收起</button>
+        <button class="primary" onclick="saveSettings()">儲存設定 ✨</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var $ = function(id) { return document.getElementById(id); };
+
+// 安全 LocalStorage 讀取防爆
+function getSafeStorage(key, fallback) {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
+  } catch(e) {
+    return fallback;
+  }
+}
+
+// =========================================
+// 🔊 Web Audio & 觸覺震動解鎖引擎
+// =========================================
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function playPenSound() {
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off' || !audioCtx) return;
+  
+  try {
+    const bufferSize = audioCtx.sampleRate * 0.04;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) { data[i] = Math.random() * 2 - 1; }
+    
+    const noise = audioCtx.createBufferSource(); noise.buffer = buffer;
+    const filter = audioCtx.createBiquadFilter(); filter.type = 'bandpass';
+    filter.frequency.value = 1200 + Math.random() * 600;
+
+    const gain = audioCtx.createGain(); gain.gain.value = 0.025;
+
+    noise.connect(filter); filter.connect(gain); gain.connect(audioCtx.destination);
+    noise.start();
+  } catch(e){}
+}
+
+function playMagicChime() {
+  const cfg = getSafeStorage('riddle-cfg', {});
+  if (cfg.audioToggle === 'off' || !audioCtx) return;
+
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(320, audioCtx.currentTime + 0.3);
+
+    gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+  } catch(e){}
+}
+
+function triggerHaptic(type) {
+  if ('vibrate' in navigator) {
+    if (type === 'stroke') navigator.vibrate(8);
+    if (type === 'reply') navigator.vibrate([20, 50, 20]);
+  }
+}
+
+// =========================================
+// 📜 動態歲月紙張 (Dynamic Aging)
+// =========================================
+function updatePaperAging() {
+  const count = parseInt(localStorage.getItem('riddle_chat_count') || '0', 10);
+  const maxAging = Math.min(count, 15);
+  
+  const sepiaVal = (maxAging * 2) + '%'; 
+  const vignetteAlpha = 0.4 + (maxAging * 0.02);
+
+  document.documentElement.style.setProperty('--sepia-level', sepiaVal);
+  document.documentElement.style.setProperty('--vignette-alpha', vignetteAlpha);
+}
+
+// =========================================
+// 流程總控：頁面初始化
+// =========================================
+let appState = 'INIT';
+
+window.onload = () => {
+  updatePaperAging();
+  
+  let sid = localStorage.getItem('riddle_session');
+  if (!sid) {
+    sid = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+    localStorage.setItem('riddle_session', sid);
+  }
+
+  const isVisited = localStorage.getItem('riddle_visited');
+  if (isVisited === 'true') {
+    $('intro-layer').style.display = 'none';
+    $('tut-layer').style.display = 'none';
+    startMainDiary();
+  } else {
+    startIntroAnimation();
+  }
+};
+
+// =========================================
+// PART 1: 開場動畫邏輯
+// =========================================
+function startIntroAnimation() {
+  appState = 'INTRO';
+  setTimeout(() => { $('step1').classList.add('active'); }, 500);
+  setTimeout(() => { $('step1').classList.remove('active'); $('step1').classList.add('exit'); }, 2500);
+  setTimeout(() => { $('step2').classList.add('active'); }, 3500);
+  setTimeout(() => { $('step3').classList.add('show'); }, 5000);
+}
+
+function enterFromIntro() {
+  initAudio();
+  const intro = $('intro-layer');
+  intro.style.transform = 'scale(1.3)';
+  intro.style.filter = 'blur(20px) brightness(2)';
+  intro.style.opacity = '0';
+  
+  setTimeout(() => { 
+    intro.style.display = 'none'; 
+    startTutorialAnimation();
+  }, 1500);
+}
+
+// =========================================
+// PART 2: 1000x1600 鎖定畫布教學邏輯
+// =========================================
+const V_WIDTH = 1000, V_HEIGHT = 1600;
+const tutCanvas = $('tut-canvas');
+const tutCtx = tutCanvas.getContext('2d');
+let tutAnimFrame = null;
+
+const strokePaths = [
+  [ {x1:380,y1:520,cx:330,cy:600,x2:280,y2:700,w:9}, {x1:335,y1:610,cx:335,cy:720,x2:335,y2:830,w:10}, {x1:430,y1:540,cx:580,cy:530,x2:600,y2:570,w:8}, {x1:510,y1:540,cx:510,cy:720,x2:480,y2:820,w:10}, {x1:490,y1:660,cx:440,cy:720,x2:400,y2:770,w:8}, {x1:540,y1:660,cx:590,cy:720,x2:620,y2:760,w:8} ],
+  [ {x1:360,y1:920,cx:330,cy:1000,x2:380,y2:1070,w:8}, {x1:380,y1:1070,cx:320,cy:1100,x2:440,y2:1080,w:7}, {x1:310,y1:1010,cx:400,cy:1000,x2:470,y2:990,w:9}, {x1:530,y1:910,cx:580,cy:910,x2:580,y2:1000,w:8}, {x1:580,y1:1000,cx:540,cy:1080,x2:570,y2:1120,w:10}, {x1:480,y1:1010,cx:570,cy:1010,x2:650,y2:1010,w:9} ]
+];
+
+let curStrokeGroup = 0, curCurveIdx = 0, tutProgress = 0;
+
+function startTutorialAnimation() {
+  appState = 'TUTORIAL';
+  $('tut-layer').style.display = 'flex';
+  
+  const w = window.innerWidth, h = window.innerHeight;
+  const scale = Math.min(w/V_WIDTH, h/V_HEIGHT);
+  const stage = $('tut-canvas-stage');
+  stage.style.width = (V_WIDTH*scale)+'px'; stage.style.height = (V_HEIGHT*scale)+'px';
+  tutCanvas.width = V_WIDTH*scale; tutCanvas.height = V_HEIGHT*scale;
+  tutCtx.scale(scale, scale); tutCtx.lineCap = 'round'; tutCtx.lineJoin = 'round';
+
+  showTutTip('✨ 示範：在紙上寫字...');
+  setTimeout(() => { tutAnimFrame = requestAnimationFrame(drawTutStep); }, 800);
+}
+
+function showTutTip(text) {
+  const tip = $('tut-tip'); tip.classList.remove('show');
+  setTimeout(() => { tip.textContent = text; tip.classList.add('show'); }, 300);
+}
+
+function getBezier(t, p0, p1, p2) {
+  const oneT = 1-t;
+  return { x: oneT*oneT*p0.x + 2*oneT*t*p1.x + t*t*p2.x, y: oneT*oneT*p0.y + 2*oneT*t*p1.y + t*t*p2.y };
+}
+
+function drawTutStep() {
+  if(appState !== 'TUTORIAL') return;
+  const group = strokePaths[curStrokeGroup];
+  if(!group) { setTimeout(tutFadeInk, 800); return; }
+  const curve = group[curCurveIdx];
+  if(!curve) { curStrokeGroup++; curCurveIdx=0; setTimeout(()=>{tutAnimFrame=requestAnimationFrame(drawTutStep);}, 200); return; }
+
+  tutProgress += 0.08; if(tutProgress>1) tutProgress=1;
+  const prevT = Math.max(0, tutProgress-0.08);
+  const p1 = getBezier(prevT, {x:curve.x1,y:curve.y1}, {x:curve.cx,y:curve.cy}, {x:curve.x2,y:curve.y2});
+  const p2 = getBezier(tutProgress, {x:curve.x1,y:curve.y1}, {x:curve.cx,y:curve.cy}, {x:curve.x2,y:curve.y2});
+
+  tutCtx.beginPath(); tutCtx.strokeStyle='#1a120c'; tutCtx.lineWidth=curve.w;
+  tutCtx.moveTo(p1.x,p1.y); tutCtx.lineTo(p2.x,p2.y); tutCtx.stroke();
+
+  playPenSound();
+
+  if(tutProgress>=1) { tutProgress=0; curCurveIdx++; }
+  tutAnimFrame = requestAnimationFrame(drawTutStep);
+}
+
+function tutFadeInk() {
+  showTutTip('💧 停筆後，墨水會滲入紙張...');
+  let alpha = 1;
+  function fade() {
+    alpha -= 0.03;
+    if(alpha<=0) { tutCtx.clearRect(0,0,V_WIDTH,V_HEIGHT); tutShowReply(); return; }
+    tutCanvas.style.opacity = alpha; requestAnimationFrame(fade);
+  }
+  setTimeout(fade, 600);
+}
+
+function tutShowReply() {
+  showTutTip('📖 日記會浮現文字回應你！');
+  playMagicChime();
+  $('tut-reply').classList.add('show');
+  setTimeout(() => {
+    showTutTip('✨ 教學完成！');
+    $('skip-btn').textContent = '進入日記 ➔';
+  }, 3000);
+}
+
+function skipTutorial() {
+  if(tutAnimFrame) cancelAnimationFrame(tutAnimFrame);
+  localStorage.setItem('riddle_visited', 'true');
+  $('tut-layer').style.opacity = '0';
+  setTimeout(() => { $('tut-layer').style.display = 'none'; startMainDiary(); }, 1000);
+}
+
+// =========================================
+// PART 3: 主日記本邏輯 (觸控 ID 鎖定 + 弱網超時)
+// =========================================
+const mainCanvas = $('main-canvas');
+const mainCtx = mainCanvas.getContext('2d');
+let mainDrawing=false, mainIdle=null, mainHasWritten=false, querying=false;
+let allStrokes=[], cur=[], activeTouchId=null;
+
+function startMainDiary() {
+  appState = 'MAIN';
+  $('main-layer').classList.add('active');
+  
+  window.addEventListener('resize', resizeMain); resizeMain();
+  mainCanvas.addEventListener('touchstart', startMainDraw, {passive:false});
+  mainCanvas.addEventListener('touchmove', moveMainDraw, {passive:false});
+  mainCanvas.addEventListener('touchend', endMainDraw, {passive:false});
+  mainCanvas.addEventListener('mousedown', startMainDraw);
+  mainCanvas.addEventListener('mousemove', moveMainDraw);
+  mainCanvas.addEventListener('mouseup', endMainDraw);
+
+  const saved = getSafeStorage('riddle-cfg', {});
+  $('workerUrl').value = saved.workerUrl || '/api/chat';
+  $('apiKey').value = saved.apiKey || '';
+  $('fontStyle').value = saved.fontStyle || 'ma';
+  $('audioToggle').value = saved.audioToggle || 'on';
+}
+
+function saveSettings() {
+  const cfg = { 
+    workerUrl: $('workerUrl').value.trim() || '/api/chat',
+    apiKey: $('apiKey').value.trim(), 
+    fontStyle: $('fontStyle').value,
+    audioToggle: $('audioToggle').value 
+  };
+  localStorage.setItem('riddle-cfg', JSON.stringify(cfg));
+  $('settings').classList.add('hidden');
+}
+
+function resizeMain(){ 
+  if (mainDrawing) return; // 正在畫畫時暫緩 resize，防止筆畫切斷
+  mainCanvas.width = window.innerWidth; mainCanvas.height = window.innerHeight; 
+  mainCtx.lineJoin = 'round'; mainCtx.lineCap = 'round'; redrawMain(); 
+}
+
+function mPos(e, touchTarget){ 
+  const t = touchTarget || (e.touches ? e.touches[0] : e); 
+  return {x: t.clientX, y: t.clientY, p: (t.force && t.force > 0) ? t.force : 0.5}; 
+}
+
+function startMainDraw(e){
+  if(appState !== 'MAIN') return;
+  e.preventDefault(); if(querying) return;
+  initAudio();
+  
+  let tTarget = null;
+  if (e.touches) {
+    tTarget = e.changedTouches[0];
+    activeTouchId = tTarget.identifier; // 鎖定第一根手指 ID，防掌觸與爆線
+  }
+  
+  mainDrawing = true; 
+  const pos = mPos(e, tTarget);
+  cur = [pos]; 
+  clearTimeout(mainIdle); 
+  $('reply-layer').innerHTML='';
+
+  // ✒️ 落筆墨滴
+  mainCtx.beginPath(); mainCtx.fillStyle = '#1a120c';
+  mainCtx.arc(pos.x, pos.y, 2 + (pos.p || 0.5) * 1.5, 0, Math.PI * 2);
+  mainCtx.fill();
+
+  triggerHaptic('stroke'); playPenSound();
+}
+
+function moveMainDraw(e){
+  e.preventDefault(); if(!mainDrawing) return;
+  let tTarget = null;
+  if (e.touches) {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchId) {
+        tTarget = e.changedTouches[i]; break;
+      }
+    }
+    if (!tTarget) return; // 忽略非首根手指的移動
+  }
+
+  const p = mPos(e, tTarget); cur.push(p); if(cur.length<2) return;
+  const a=cur[cur.length-2], b=cur[cur.length-1];
+  mainCtx.beginPath(); mainCtx.strokeStyle='#1a120c'; mainCtx.lineWidth=1.8+(b.p||0.5)*2.8;
+  mainCtx.moveTo(a.x,a.y); mainCtx.lineTo(b.x,b.y); mainCtx.stroke();
+
+  playPenSound();
+}
+
+function endMainDraw(e){
+  if(e) e.preventDefault(); if(!mainDrawing) return;
+  if (e && e.touches) {
+    let released = false;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      if (e.changedTouches[i].identifier === activeTouchId) released = true;
+    }
+    if (!released) return; // 第一根手指尚未抬起
+  }
+
+  mainDrawing = false; activeTouchId = null;
+  if(cur.length > 2){ allStrokes.push(cur.slice()); mainHasWritten = true; }
+  cur = []; clearTimeout(mainIdle);
+  mainIdle = setTimeout(()=>{ if(mainHasWritten && allStrokes.length) mainCommit(); }, 1500);
+}
+
+function redrawMain(){
+  mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height);
+  allStrokes.forEach(s=>{
+    if(s.length<2) return;
+    for(let i=1;i<s.length;i++){
+      mainCtx.beginPath(); mainCtx.strokeStyle='#1a120c'; mainCtx.lineWidth=1.8+(s[i].p||0.5)*2.8;
+      mainCtx.moveTo(s[i-1].x,s[i-1].y); mainCtx.lineTo(s[i].x,s[i].y); mainCtx.stroke();
+    }
+  });
+}
+
+function fadeMainInk(){
+  return new Promise(res => {
+    let a=1;
+    function step(){
+      a-=0.05; if(a<=0){ mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height); res(); return; }
+      mainCtx.save(); mainCtx.globalAlpha=a; mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height);
+      redrawMain(); mainCtx.restore(); requestAnimationFrame(step);
+    } requestAnimationFrame(step);
+  });
+}
+
+function clearMainPage(){ allStrokes=[]; mainHasWritten=false; mainCtx.clearRect(0,0,mainCanvas.width,mainCanvas.height); $('reply-layer').innerHTML=''; clearTimeout(mainIdle); }
+
+function mainShowStatus(m){ const s=$('status'); s.textContent=m; s.classList.add('show'); }
+function mainHideStatus(){ $('status').classList.remove('show'); }
+
+function mainAnimateReply(text){
+  return new Promise(res=>{
+    triggerHaptic('reply');
+    const cfg = getSafeStorage('riddle-cfg', {});
+    const layer = $('reply-layer'); layer.innerHTML='';
+    let html='';
+    for(let i=0; i<text.length; i++){
+      let ch=text[i]; if(ch==='\n'){ html+='<br>'; continue; } if(ch===' '){ html+='&nbsp;'; continue; }
+      html+=`<span class="reply-char" data-font="${cfg.fontStyle||'ma'}">${ch}</span>`;
+    }
+    layer.innerHTML=html;
+    const spans=layer.querySelectorAll('.reply-char'); let idx=0;
+    function next(){
+      if(idx>=spans.length){ res(); return; }
+      spans[idx].classList.add('show'); 
+      playMagicChime();
+      idx++;
+      setTimeout(next, /[\u4e00-\u9fff]/.test(spans[idx-1].textContent)?120:60 + Math.random()*50);
+    } next();
+  });
+}
+
+// 發送對話 (含誤觸過濾 + 15秒連線超時防卡死)
+function mainCommit(){
+  if(querying) return;
+  
+  // 誤觸與空白過濾：沒有足夠筆畫不發送 API
+  if (!allStrokes.length || allStrokes.every(s => s.length <= 2)) {
+    clearMainPage(); return;
+  }
+
+  querying = true;
+
+  // 生成 512px 圖片
+  const apiCv=document.createElement('canvas'); const sc=Math.min(1, 512/Math.max(mainCanvas.width, mainCanvas.height));
+  apiCv.width=Math.round(mainCanvas.width*sc); apiCv.height=Math.round(mainCanvas.height*sc);
+  const actx=apiCv.getContext('2d'); actx.fillStyle='#f5f0e8'; actx.fillRect(0,0,apiCv.width,apiCv.height);
+  actx.drawImage(mainCanvas,0,0,apiCv.width,apiCv.height);
+  const b64=apiCv.toDataURL('image/jpeg',0.6).split(',')[1];
+  
+  // 強制回收臨時 Canvas 記憶體
+  apiCv.width = 0; apiCv.height = 0;
+
+  fadeMainInk().then(()=>{ allStrokes=[]; mainHasWritten=false; });
+  mainShowStatus('墨水正在下沉...');
+
+  const cfg = getSafeStorage('riddle-cfg', {});
+  const workerUrl = cfg.workerUrl || '/api/chat';
+  const sid = localStorage.getItem('riddle_session');
+
+  // 15 秒連線超時中斷控制器
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  fetch(workerUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    signal: controller.signal,
+    body: JSON.stringify({
+      session_id: sid,
+      image_b64: b64,
+      user_api_key: cfg.apiKey || ''
+    })
+  })
+  .then(r => {
+    clearTimeout(timeoutId);
+    if(r.status === 429) throw new Error('429');
+    if(!r.ok) return r.text().then(t => { throw new Error('API '+r.status+': '+t.slice(0,50)); });
+    return r.json();
+  })
+  .then(d => {
+    if (d.error) throw new Error(d.error);
+    const replyStr = d.reply || '日記靜悄悄的，沒有回應。';
+    
+    let count = parseInt(localStorage.getItem('riddle_chat_count') || '0', 10);
+    localStorage.setItem('riddle_chat_count', (count + 1).toString());
+    updatePaperAging();
+
+    mainHideStatus();
+    return mainAnimateReply(replyStr);
+  })
+  .then(() => {
+    setTimeout(() => {
+      const chars = $('reply-layer').querySelectorAll('.reply-char'); let op=1;
+      function fo(){ op-=0.03; if(op<=0){$('reply-layer').innerHTML='';return;} chars.forEach(c=>c.style.opacity=op); requestAnimationFrame(fo); } fo();
+    }, 8000);
+  })
+  .catch(e => {
+    clearTimeout(timeoutId);
+    mainHideStatus();
+    if(e.name === 'AbortError') {
+      mainAnimateReply('魔法傳輸超時，請檢查您的網路連線。');
+    } else if(e.message === '429') {
+      mainAnimateReply('墨水暫時耗盡... 請稍後再試，或點擊右上角 ⚙️ 輸入您的 Groq Key。');
+    } else {
+      mainAnimateReply('日記發出了奇怪的聲音... ' + e.message.slice(0,30));
+    }
+  })
+  .finally(() => { querying=false; });
+}
+
+// 讀取歷史紀錄 (防重覆發送)
+let isHistoryLoading = false;
+function showHistory() {
+  if (isHistoryLoading) return;
+  isHistoryLoading = true;
+
+  const list = $('history-list');
+  list.innerHTML = '<p style="text-align:center;color:#999;padding:20px">正在翻開記憶...</p>';
+  $('history-overlay').classList.remove('hidden');
+
+  const sid = localStorage.getItem('riddle_session');
+  const cfg = getSafeStorage('riddle-cfg', {});
+  const workerUrl = (cfg.workerUrl || '/api/chat').replace(/\/chat$/, '/history');
+
+  fetch(workerUrl + '?session_id=' + sid)
+    .then(r => r.json())
+    .then(d => {
+      if (!d.conversations || !d.conversations.length) {
+        list.innerHTML = '<p style="text-align:center;color:#999;padding:30px">書頁上還沒有任何記憶...</p>';
+        return;
+      }
+      list.innerHTML = d.conversations.map(m => {
+        const date = new Date(m.created_at);
+        const ds = (date.getMonth()+1)+'/'+date.getDate()+' '+date.getHours()+':'+String(date.getMinutes()).padStart(2,'0');
+        return `<div class="mem-item"><div class="mem-body"><div class="mem-date">${ds}</div><div class="mem-user">✏️ ${esc(m.user_text)}</div><div class="mem-reply">${esc(m.ai_reply)}</div></div></div>`;
+      }).join('');
+    })
+    .catch(() => {
+      list.innerHTML = '<p style="text-align:center;color:#999;padding:30px">記憶有些模糊，暫時無法讀取。</p>';
+    })
+    .finally(() => { isHistoryLoading = false; });
+}
+
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+</body>
+</html>
